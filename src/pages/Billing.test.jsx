@@ -99,7 +99,7 @@ describe('Billing — reference-based verification UX', () => {
     // Initial /billing/config + /plan resolve
     await waitFor(() => expect(screen.getByText(/Current Plan:/i)).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /Start Free Trial/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Subscribe — R150/ }))
 
     await waitFor(() => {
       expect(BillingAPIMock.checkout).toHaveBeenCalledWith({
@@ -136,7 +136,7 @@ describe('Billing — reference-based verification UX', () => {
 
     renderBilling()
     await waitFor(() => expect(screen.getByText(/Current Plan:/i)).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /Start Free Trial/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Subscribe — R150/ }))
 
     await waitFor(() =>
       expect(screen.getByText(/We're still confirming your payment/i)).toBeInTheDocument(),
@@ -175,7 +175,7 @@ describe('Billing — reference-based verification UX', () => {
 
     renderBilling()
     await waitFor(() => expect(screen.getByText(/Current Plan:/i)).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /Start Free Trial/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Subscribe — R150/ }))
 
     await waitFor(() =>
       expect(screen.getByText(/Payment was not completed/i)).toBeInTheDocument(),
@@ -207,7 +207,7 @@ describe('Billing — reference-based verification UX', () => {
     await waitFor(() => expect(screen.getByText(/Current Plan:/i)).toBeInTheDocument())
 
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    fireEvent.click(screen.getByRole('button', { name: /Start Free Trial/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Subscribe — R150/ }))
 
     // Advance through the 2.5s × 8 polling window.
     await act(async () => {
@@ -221,5 +221,49 @@ describe('Billing — reference-based verification UX', () => {
     await waitFor(() => {
       expect(toastMock.success).toHaveBeenCalledWith('Subscription activated!')
     })
+  })
+})
+
+describe('Billing — store on its free trial', () => {
+  beforeEach(() => {
+    Object.values(BillingAPIMock).forEach((m) => m.mockReset?.())
+    PlanAPIMock.get.mockReset()
+    useAuthMock.mockReturnValue({ user: { email: 'owner@example.com' } })
+    openExternalUrlMock.mockReset()
+    toastFn.mockReset()
+    Object.values(toastMock).forEach((m) => m.mockReset?.())
+
+    BillingAPIMock.config.mockResolvedValue({ provider: 'paystack' })
+    PlanAPIMock.get.mockResolvedValue({
+      plan: 'pro',
+      status: 'trialing',
+      is_active: true,
+      is_on_trial: true,
+      trial_end: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString(),
+      limits: {},
+      usage: {},
+    })
+  })
+
+  it('can subscribe before the trial ends, and is not offered a cancel button', async () => {
+    // A trial store is "pro" and "active" — the old guard treated that as
+    // already subscribed and refused to open checkout.
+    BillingAPIMock.checkout.mockResolvedValue({
+      url: 'https://checkout.paystack.com/abc',
+      reference: 'ref-trial',
+    })
+    openExternalUrlMock.mockResolvedValue({ kind: 'external' })
+
+    renderBilling()
+    await waitFor(() => expect(screen.getByText(/Trial: \d+ days left/i)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Cancel Subscription/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Start Free Trial/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Subscribe — R150/ }))
+
+    await waitFor(() => {
+      expect(BillingAPIMock.checkout).toHaveBeenCalledWith({ plan: 'pro', email: 'owner@example.com' })
+    })
+    expect(toastFn).not.toHaveBeenCalledWith('You are already on this plan')
   })
 })

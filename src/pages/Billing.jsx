@@ -206,7 +206,7 @@ export default function Billing() {
   }
 
   const upgrade = async (planId) => {
-    if (planId === currentPlan && isActive) {
+    if (planId === currentPlan && isActive && !isTrialing) {
       toast('You are already on this plan')
       return
     }
@@ -345,7 +345,7 @@ export default function Billing() {
           Billing
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm sm:text-base">
-          One plan. Full access. Start with a 30-day free trial.
+          One plan. Full access. Cancel anytime.
         </p>
       </div>
 
@@ -434,7 +434,7 @@ export default function Billing() {
                       {currentPlan}
                     </span>
                   </h3>
-                  {periodEnd && isActive && (
+                  {isActive && (isTrialing ? trialEnd : periodEnd) && (
                     <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                       {isTrialing ? "Trial ends" : "Next billing date"}:{" "}
                       {formatDate(isTrialing ? trialEnd : periodEnd)}
@@ -445,18 +445,18 @@ export default function Billing() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {!isActive && (
+                {(!isActive || isTrialing) && (
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={() => upgrade('pro')}
                     disabled={loading}
                   >
-                    {loading ? 'Processing...' : 'Upgrade to Pro'}
+                    {loading ? 'Processing...' : isTrialing ? 'Subscribe now' : 'Upgrade to Pro'}
                   </Button>
                 )}
 
-                {isActive && (
+                {isActive && !isTrialing && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -562,10 +562,10 @@ export default function Billing() {
               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-amber-800 dark:text-amber-200 font-medium">
-                  Your subscription is not active
+                  {status === 'trialing' ? 'Your free trial has ended' : 'Your subscription is not active'}
                 </p>
                 <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                  Start your 30-day free trial to unlock all features.
+                  Subscribe for {plan.price}{plan.period} to unlock all features.
                 </p>
               </div>
             </div>
@@ -573,7 +573,7 @@ export default function Billing() {
         </Card>
       )}
 
-      {isActive && currentPlan === 'pro' && (
+      {isActive && !isTrialing && currentPlan === 'pro' && (
         <div className="text-center">
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
             You have full access to all Pro features. There is no higher plan.
@@ -616,15 +616,15 @@ export default function Billing() {
                   </span>
                 </div>
                 <p className="text-xs text-accent-600 dark:text-accent-400 font-medium mt-2">
-                  30-day free trial
+                  Cancel anytime
                 </p>
               </div>
             </div>
 
             <div className="mt-6">
-              {(currentPlan === 'pro' && isActive) ? (
+              {(currentPlan === 'pro' && isActive && !isTrialing) ? (
                 <Button variant="secondary" className="w-full" disabled>
-                  {isTrialing ? 'Current plan: Pro (trial)' : 'Current plan: Pro'}
+                  Current plan: Pro
                 </Button>
               ) : (
                 <Button
@@ -634,7 +634,7 @@ export default function Billing() {
                   onClick={() => upgrade(plan.planId)}
                   disabled={loading}
                 >
-                  {loading ? "Processing..." : "Start Free Trial"}
+                  {loading ? 'Processing...' : `Subscribe — ${plan.price}${plan.period}`}
                 </Button>
               )}
             </div>

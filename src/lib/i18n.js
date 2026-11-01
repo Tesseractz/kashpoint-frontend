@@ -143,7 +143,7 @@ const en = {
     // Billing
     billing: {
       title: 'Choose Your Plan',
-      subtitle: 'Start with a 30-day free trial. Credit card required, but you won\'t be charged until the trial ends.',
+      subtitle: 'One plan. Full access. Your first 30 days are free — no card needed to start.',
       current_plan: 'Current Plan',
       trial_days_left: 'Trial: {{days}} days left',
       active: 'Active',
@@ -151,7 +151,7 @@ const en = {
       canceled: 'Canceled',
       no_active_plan: 'No Active Plan',
       manage_subscription: 'Manage Subscription',
-      start_trial: 'Start Free Trial',
+      start_trial: 'Subscribe',
       switch_plan: 'Switch Plan',
       current: 'Current',
       most_popular: 'Most Popular',
