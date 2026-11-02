@@ -29,6 +29,7 @@ import { Logo, LogoIcon } from "./components/Logo";
 import NotificationsBell from "./components/NotificationsBell";
 import InfoStrip from "./components/InfoStrip";
 import PushNotificationBanner from "./components/PushNotificationBanner";
+import TrialBanner from "./components/TrialBanner";
 import CookieConsent from "./components/CookieConsent";
 
 const navItems = [
@@ -437,6 +438,7 @@ export default function App() {
         <DesktopHeader />
 
         <main className="flex-1 flex flex-col p-0 mobile-main-offset mobile-bottom-offset overflow-x-hidden min-w-0">
+          <TrialBanner />
           <PushNotificationBanner />
           <div className="flex-1 p-3 sm:p-5 lg:p-8 w-full min-w-0">
             <div className="max-w-7xl mx-auto w-full">

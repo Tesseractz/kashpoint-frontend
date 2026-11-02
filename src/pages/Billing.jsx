@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Card, CardContent } from '../components/ui/Card'
 import { BillingAPI, PlanAPI } from '../api/client'
 import toast from 'react-hot-toast'
-import { Check, X, Zap, Package, Users, FileText, Bell, Calendar, AlertTriangle, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { Check, X, Zap, Package, Users, FileText, Bell, Calendar, AlertTriangle, Loader2, RefreshCw, Sparkles, CreditCard, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { openExternalUrl } from '../lib/platform'
 import { Badge } from '../components/ui/Badge'
@@ -102,9 +102,9 @@ export default function Billing() {
   const verifyByReference = async (reference) => {
     if (!reference) return { ok: false }
     try {
-      await BillingAPI.paystackSync(reference)
+      const data = await BillingAPI.paystackSync(reference)
       await qc.invalidateQueries({ queryKey: ['plan'] })
-      return { ok: true }
+      return { ok: true, data }
     } catch (e) {
       const detail = (e?.response?.data?.detail || '').toString()
       const abandoned = /not successful|abandoned|failed/i.test(detail)
@@ -136,7 +136,9 @@ export default function Billing() {
         if (result.ok) {
           setVerifyState(VERIFY.IDLE)
           setPendingReference(null)
-          toast.success('Payment verified! Your Pro plan is now active.')
+          if (!announceCardSaved(result.data)) {
+            toast.success('Payment verified! Your Pro plan is now active.')
+          }
         } else if (result.abandoned) {
           setVerifyState(VERIFY.ABANDONED)
           setVerifyMessage(result.detail || 'Payment was not completed.')
@@ -174,6 +176,9 @@ export default function Billing() {
 
   const trialDaysLeft = daysUntil(trialEnd)
   const isTrialing = status === 'trialing' && trialDaysLeft !== null && trialDaysLeft > 0
+  // A card saved during the trial: Paystack charges the first R150 on trialEnd.
+  const cardOnFile = planQuery.data?.card_on_file ?? Boolean(hasPaystackSubscription && isTrialing)
+  const firstChargeDate = formatDate(periodEnd || trialEnd)
 
   // Manual "Check status" button on the inline verification card.
   // Same logic as the post-checkout path — verify with the reference,
@@ -186,7 +191,7 @@ export default function Billing() {
     if (result.ok) {
       setVerifyState(VERIFY.IDLE)
       setPendingReference(null)
-      toast.success('Subscription activated!')
+      if (!announceCardSaved(result.data)) toast.success('Subscription activated!')
     } else if (result.abandoned) {
       setVerifyState(VERIFY.ABANDONED)
       setVerifyMessage(result.detail || 'Payment was not completed.')
@@ -205,8 +210,24 @@ export default function Billing() {
     setVerifyMessage('')
   }
 
-  const upgrade = async (planId) => {
-    if (planId === currentPlan && isActive && !isTrialing) {
+  // After a card check: the card is saved, nothing was charged. Returns true
+  // when it handled the announcement.
+  function announceCardSaved(data) {
+    if (data?.card_saved) {
+      const when = formatDate(data.first_charge_date)
+      toast.success(when ? `Card saved. Nothing is charged until ${when}.` : 'Card saved. Nothing is charged until your trial ends.')
+      return true
+    }
+    if (data?.pending) {
+      toast('Saving your card… this takes a few seconds. Refresh in a moment.')
+      return true
+    }
+    return false
+  }
+
+  // saveCard: during the trial, save a card for later instead of paying now.
+  const upgrade = async (planId, { saveCard = false } = {}) => {
+    if (!saveCard && planId === currentPlan && isActive && !isTrialing) {
       toast('You are already on this plan')
       return
     }
@@ -214,7 +235,9 @@ export default function Billing() {
     try {
       setLoading(true)
       const email = user?.email || user?.user_metadata?.email || ''
-      const checkoutResp = await BillingAPI.checkout({ plan: planId, email })
+      const checkoutResp = saveCard
+        ? await BillingAPI.cardSetup({ email })
+        : await BillingAPI.checkout({ plan: planId, email })
       reference = checkoutResp?.reference || null
 
       const opened = await openExternalUrl(checkoutResp.url)
@@ -254,7 +277,7 @@ export default function Billing() {
         if (result.ok) {
           setVerifyState(VERIFY.IDLE)
           setPendingReference(null)
-          toast.success('Subscription activated!')
+          if (!announceCardSaved(result.data)) toast.success('Subscription activated!')
         } else if (result.abandoned) {
           setVerifyState(VERIFY.ABANDONED)
           setVerifyMessage(result.detail || 'Payment was not completed.')
@@ -294,6 +317,23 @@ export default function Billing() {
     }
   }
 
+  const removeCard = async () => {
+    const until = formatDate(trialEnd)
+    if (!window.confirm(`Remove your saved card? Your free trial continues until ${until} and you won't be charged.`)) {
+      return
+    }
+    try {
+      setCancelLoading(true)
+      await BillingAPI.cancel()
+      toast.success(`Card removed. Your trial continues until ${until}.`)
+      qc.invalidateQueries({ queryKey: ['plan'] })
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Failed to remove the card')
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
   const refreshPlan = () => {
     qc.invalidateQueries({ queryKey: ['plan'] })
     toast.success('Billing status refreshed')
@@ -318,6 +358,14 @@ export default function Billing() {
       return (
         <Badge tone="success" icon={Check} dot>
           Active
+        </Badge>
+      )
+    }
+    if (status === 'trialing' && isActive && cardOnFile) {
+      // Trial over, card saved: Paystack is charging the first R150.
+      return (
+        <Badge tone="info" icon={Loader2} dot>
+          First payment processing
         </Badge>
       )
     }
@@ -445,14 +493,26 @@ export default function Billing() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {(!isActive || isTrialing) && (
+                {isTrialing && !cardOnFile && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => upgrade('pro', { saveCard: true })}
+                    disabled={loading}
+                  >
+                    <CreditCard className="w-4 h-4 mr-1.5" />
+                    {loading ? 'Processing...' : 'Add card'}
+                  </Button>
+                )}
+
+                {!isActive && !isTrialing && (
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={() => upgrade('pro')}
                     disabled={loading}
                   >
-                    {loading ? 'Processing...' : isTrialing ? 'Subscribe now' : 'Upgrade to Pro'}
+                    {loading ? 'Processing...' : 'Upgrade to Pro'}
                   </Button>
                 )}
 
@@ -536,20 +596,62 @@ export default function Billing() {
         </Card>
       )}
 
-      {isTrialing && (
+      {isTrialing && !cardOnFile && (
         <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/20">
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <Zap className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-emerald-800 dark:text-emerald-200 font-medium">
-                  Trial Active — Full Access Unlocked!
+          <CardContent className="py-4 sm:py-5">
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+              <CreditCard className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-emerald-900 dark:text-emerald-100 font-semibold">
+                  Keep Pro after your trial: add your card now
                 </p>
-                <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">
-                  You have access to <strong>all features</strong> during your trial period ({trialDaysLeft} days remaining).
-                  After the trial ends, features will be locked until you subscribe.
+                <p className="text-sm text-emerald-800 dark:text-emerald-200 mt-1">
+                  You pay <strong>nothing today</strong>. Your first R150 is charged on{' '}
+                  <strong>{formatDate(trialEnd)}</strong>, when your trial ends ({trialDaysLeft} days left).
+                  Remove the card any time before then and you won't be charged.
+                </p>
+                <p className="text-xs text-emerald-700/90 dark:text-emerald-300/80 mt-2 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                  Paystack makes a R1 card check and refunds it straight away.
                 </p>
               </div>
+              <Button
+                variant="primary"
+                size="sm"
+                className="sm:self-center flex-shrink-0"
+                onClick={() => upgrade('pro', { saveCard: true })}
+                disabled={loading}
+              >
+                {loading ? 'Processing...' : 'Add card'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isTrialing && cardOnFile && (
+        <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/20">
+          <CardContent className="py-4 sm:py-5">
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+              <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-emerald-900 dark:text-emerald-100 font-semibold">
+                  Card saved: Pro continues after your trial
+                </p>
+                <p className="text-sm text-emerald-800 dark:text-emerald-200 mt-1">
+                  Your first R150 payment is on <strong>{firstChargeDate}</strong>. Until then you have
+                  everything free. Remove the card before then and you won't be charged.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="sm:self-center flex-shrink-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                onClick={removeCard}
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? 'Removing...' : 'Remove card'}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -587,20 +689,17 @@ export default function Billing() {
           <div className="absolute inset-x-0 top-0 h-1.5 bg-brand-gradient" aria-hidden />
           <div className="pointer-events-none absolute -top-32 -right-32 w-72 h-72 rounded-full bg-brand-100/60 dark:bg-brand-900/20 blur-3xl" aria-hidden />
 
-          {currentPlan === 'pro' && (
-            <div className="absolute top-4 right-4 z-10">
-              <Badge tone="success" icon={Check} size="md">Current</Badge>
-            </div>
-          )}
-
           <CardContent className="relative p-5 sm:p-7">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="w-12 h-12 bg-brand-gradient rounded-2xl flex items-center justify-center mb-4 shadow-brand">
                   <plan.icon className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {/* Inline, not pinned to the corner: on a phone the corner
+                    badge sat on top of the price and hid the "0" of R150. */}
+                <h3 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
                   {plan.name}
+                  {currentPlan === 'pro' && <Badge tone="success" icon={Check} size="md">Current</Badge>}
                 </h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                   {plan.description}
@@ -626,6 +725,26 @@ export default function Billing() {
                 <Button variant="secondary" className="w-full" disabled>
                   Current plan: Pro
                 </Button>
+              ) : isTrialing && cardOnFile ? (
+                <Button variant="secondary" className="w-full" disabled>
+                  <Check className="w-4 h-4 mr-1.5" />
+                  Card saved, first payment {firstChargeDate}
+                </Button>
+              ) : isTrialing ? (
+                <>
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    size="lg"
+                    onClick={() => upgrade(plan.planId, { saveCard: true })}
+                    disabled={loading}
+                  >
+                    {loading ? 'Processing...' : 'Add card: pay R0 today'}
+                  </Button>
+                  <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-2">
+                    First R150 on {formatDate(trialEnd)}. Remove the card any time before then.
+                  </p>
+                </>
               ) : (
                 <Button
                   variant="primary"

@@ -87,6 +87,8 @@ export const ReportsAPI = {
 
 export const BillingAPI = {
   checkout: ({ plan, email }) => api.post('/billing/checkout', { plan, email }).then(r => r.data),
+  // Save a card during the trial: R1 refundable check now, first R150 on the trial's end date.
+  cardSetup: ({ email }) => api.post('/billing/card-setup', { email }).then(r => r.data),
   cancel: () => api.post('/billing/cancel').then(r => r.data),
   paystackSync: (reference) => api.post('/billing/paystack/sync', { reference }).then(r => r.data),
   config: () => api.get('/billing/config').then(r => r.data),

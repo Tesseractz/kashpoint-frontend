@@ -9,9 +9,11 @@ import { Card, CardContent } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
 import toast from "react-hot-toast"
 import { Logo } from "../components/Logo"
+import { normalizePhone } from "../lib/phone"
 import {
   Store,
   Mail,
+  Phone,
   Lock,
   ArrowRight,
   Sun,
@@ -40,6 +42,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [storeName, setStoreName] = useState("")
+  const [phone, setPhone] = useState("")
   const [mode, setMode] = useState(() => (passwordRecovery ? MODE.RESET_PASSWORD : MODE.SIGN_IN))
   const [loading, setLoading] = useState(false)
 
@@ -109,6 +112,7 @@ export default function AuthPage() {
     if (mode === MODE.SIGN_UP) {
       if (password !== confirmPassword) { toast.error("Passwords do not match"); return false }
       if (!storeName.trim()) { toast.error("Store name is required"); return false }
+      if (!normalizePhone(phone)) { toast.error(t("auth.phone_invalid")); return false }
       if (!termsAccepted) { toast.error("You must accept the Terms of Service"); return false }
       if (!privacyAccepted) { toast.error("You must accept the Privacy Policy"); return false }
     }
@@ -126,7 +130,11 @@ export default function AuthPage() {
     const { data, error } = await supabase.auth.signUp({
       email, password,
       options: {
-        data: { store_name: storeName.trim() },
+        data: {
+          store_name: storeName.trim(),
+          phone: normalizePhone(phone),
+          marketing_opt_in: marketingOptIn,
+        },
         emailRedirectTo: `${window.location.origin}/auth`,
       },
     })
@@ -356,6 +364,20 @@ export default function AuthPage() {
                     />
                   )}
 
+                  {mode === MODE.SIGN_UP && (
+                    <Input
+                      label={t("auth.phone")}
+                      icon={Phone}
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="082 123 4567"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      autoComplete="tel"
+                      hint={t("auth.phone_hint")}
+                    />
+                  )}
+
                   <Input
                     label={t("auth.email")}
                     icon={Mail}
@@ -434,6 +456,7 @@ export default function AuthPage() {
                       setMode(mode === MODE.SIGN_UP ? MODE.SIGN_IN : MODE.SIGN_UP)
                       setConfirmPassword("")
                       setStoreName("")
+                      setPhone("")
                     }}
                     className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
                   >

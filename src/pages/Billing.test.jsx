@@ -13,6 +13,7 @@ const { BillingAPIMock, PlanAPIMock, useAuthMock, openExternalUrlMock, toastFn, 
       BillingAPIMock: {
         config: vi.fn(),
         checkout: vi.fn(),
+        cardSetup: vi.fn(),
         paystackSync: vi.fn(),
         cancel: vi.fn(),
       },
@@ -245,25 +246,88 @@ describe('Billing — store on its free trial', () => {
     })
   })
 
-  it('can subscribe before the trial ends, and is not offered a cancel button', async () => {
+  it('offers to save a card for later instead of charging now, with no cancel button', async () => {
     // A trial store is "pro" and "active" — the old guard treated that as
     // already subscribed and refused to open checkout.
-    BillingAPIMock.checkout.mockResolvedValue({
-      url: 'https://checkout.paystack.com/abc',
-      reference: 'ref-trial',
+    BillingAPIMock.cardSetup.mockResolvedValue({
+      url: 'https://checkout.paystack.com/card',
+      reference: 'ref-card',
     })
     openExternalUrlMock.mockResolvedValue({ kind: 'external' })
 
     renderBilling()
     await waitFor(() => expect(screen.getByText(/Trial: \d+ days left/i)).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Cancel Subscription/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Start Free Trial/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Subscribe — R150/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/R1 card check and refunds it/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Subscribe — R150/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Add card: pay R0 today/i }))
 
     await waitFor(() => {
-      expect(BillingAPIMock.checkout).toHaveBeenCalledWith({ plan: 'pro', email: 'owner@example.com' })
+      expect(BillingAPIMock.cardSetup).toHaveBeenCalledWith({ email: 'owner@example.com' })
     })
+    expect(BillingAPIMock.checkout).not.toHaveBeenCalled()
     expect(toastFn).not.toHaveBeenCalledWith('You are already on this plan')
+  })
+
+  it('says the card is saved and when the first payment is, after the card check', async () => {
+    window.Capacitor = { isNativePlatform: () => true, Plugins: { Browser: {} } }
+    BillingAPIMock.cardSetup.mockResolvedValue({ url: 'https://checkout.paystack.com/card', reference: 'ref-card' })
+    openExternalUrlMock.mockResolvedValue({ kind: 'in-app-browser', onClosed: Promise.resolve() })
+    BillingAPIMock.paystackSync.mockResolvedValue({
+      synced: true,
+      card_saved: true,
+      first_charge_date: '2026-12-02T17:07:49.000Z',
+    })
+
+    renderBilling()
+    await waitFor(() => expect(screen.getByText(/Trial: \d+ days left/i)).toBeInTheDocument())
+    fireEvent.click(screen.getAllByRole('button', { name: /^Add card$/i })[0])
+
+    await waitFor(() => expect(BillingAPIMock.paystackSync).toHaveBeenCalledWith('ref-card'))
+    await waitFor(() =>
+      expect(toastMock.success).toHaveBeenCalledWith(expect.stringMatching(/^Card saved\. Nothing is charged until .*2026/)),
+    )
+    expect(toastMock.success).not.toHaveBeenCalledWith('Subscription activated!')
+  })
+})
+
+describe('Billing — trial with a card already saved', () => {
+  beforeEach(() => {
+    Object.values(BillingAPIMock).forEach((m) => m.mockReset?.())
+    PlanAPIMock.get.mockReset()
+    useAuthMock.mockReturnValue({ user: { email: 'owner@example.com' } })
+    toastFn.mockReset()
+    Object.values(toastMock).forEach((m) => m.mockReset?.())
+    BillingAPIMock.config.mockResolvedValue({ provider: 'paystack' })
+    const trialEnd = new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString()
+    PlanAPIMock.get.mockResolvedValue({
+      plan: 'pro',
+      status: 'trialing',
+      is_active: true,
+      is_on_trial: true,
+      trial_end: trialEnd,
+      current_period_end: trialEnd,
+      card_on_file: true,
+      has_paystack_subscription: true,
+      limits: {},
+      usage: {},
+    })
+  })
+
+  it('shows the first payment date and lets the owner remove the card', async () => {
+    BillingAPIMock.cancel.mockResolvedValue({ canceled: true, card_removed: true })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderBilling()
+    await waitFor(() => expect(screen.getByText(/Card saved: Pro continues after your trial/i)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^Add card$/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Remove card/i }))
+    await waitFor(() => expect(BillingAPIMock.cancel).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(toastMock.success).toHaveBeenCalledWith(expect.stringMatching(/^Card removed\. Your trial continues until/)),
+    )
+    confirmSpy.mockRestore()
   })
 })
