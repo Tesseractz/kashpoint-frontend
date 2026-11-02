@@ -120,6 +120,25 @@ jobs:
       - name: Build web assets
         run: npm run build
 
+      # The deploy writes to the FTP account's root. If that account is ever
+      # rooted anywhere but the app's folder (the main domain's public_html,
+      # say), a sync would bury that site under the app. So before touching
+      # anything, list the root and insist it already looks like the app.
+      # This also proves the credentials work before FTP-Deploy-Action runs.
+      # The host only speaks plain FTP (AUTH TLS is refused), hence protocol: ftp.
+      - name: Check the FTP account points at the app folder
+        if: env.FTP_HOST != '' && env.VITE_API_BASE_URL != ''
+        run: |
+          listing=$(curl -sS --max-time 60 --list-only "ftp://$FTP_HOST/" --user "$FTP_USER:$FTP_PASS")
+          echo "FTP root contains:"
+          echo "$listing"
+          for marker in index.html sw.js assets; do
+            if ! grep -qx "$marker" <<<"$listing"; then
+              echo "::error::FTP root has no '$marker' — this is not the app folder. Refusing to deploy."
+              exit 1
+            fi
+          done
+
       - name: Deploy via FTP
         if: env.FTP_HOST != '' && env.VITE_API_BASE_URL != ''
         uses: SamKirkland/FTP-Deploy-Action@4.0.0
