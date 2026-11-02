@@ -5,11 +5,13 @@ import toast from 'react-hot-toast';
 
 const BUCKET_NAME = 'product-images';
 
-export default function ImageUpload({ 
-  value, 
-  onChange, 
+export default function ImageUpload({
+  value,
+  onChange,
   className = '',
-  size = 'md' // 'sm', 'md', 'lg'
+  size = 'md', // 'sm', 'md', 'lg'
+  folder = 'products', // path inside the bucket: 'products' or 'logos'
+  fit = 'cover', // 'cover' for product photos, 'contain' for logos
 }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -44,7 +46,7 @@ export default function ImageUpload({
       // Generate unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `products/${fileName}`;
+      const filePath = `${folder}/${fileName}`;
 
       // Upload to Supabase Storage
       const { data, error: uploadError } = await supabase.storage
@@ -125,11 +127,11 @@ export default function ImageUpload({
 
       {value ? (
         // Image preview
-        <div className={`relative ${sizeClasses[size]} rounded-xl overflow-hidden group`}>
+        <div className={`relative ${sizeClasses[size]} rounded-xl overflow-hidden group ${fit === 'contain' ? 'bg-white border border-slate-200 dark:border-slate-600' : ''}`}>
           <img
             src={value}
-            alt="Product"
-            className="w-full h-full object-cover"
+            alt=""
+            className={`w-full h-full ${fit === 'contain' ? 'object-contain p-1' : 'object-cover'}`}
           />
           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
             <button

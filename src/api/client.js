@@ -102,6 +102,12 @@ export const ProfileAPI = {
   get: () => api.get('/profile').then(r => r.data),
 }
 
+// The business details printed on receipts (name, logo, address, VAT number...).
+export const StoreAPI = {
+  get: () => api.get('/store').then(r => r.data),
+  update: (data) => api.put('/store', data).then(r => r.data),
+}
+
 export const UsersAPI = {
   list: () => api.get('/users').then(r => r.data),
   invite: (data) => api.post('/users/invite', data).then(r => r.data),

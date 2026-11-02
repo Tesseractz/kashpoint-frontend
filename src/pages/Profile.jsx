@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../co
 import { PlanAPI, BillingAPI, NotificationsAPI, PushAPI } from "../api/client";
 import toast from "react-hot-toast";
 import { ensurePushSubscription, subscriptionToPayload } from "../lib/push";
+import StoreDetailsCard from "../components/StoreDetailsCard";
 import {
   User,
   Mail,
@@ -334,6 +335,9 @@ export default function Profile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* What goes on every receipt: owners only */}
+      {isAdmin && <StoreDetailsCard />}
 
       {/* Subscription Card */}
       <Card>

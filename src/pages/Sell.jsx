@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ProductsAPI, SalesAPI, ReturnsAPI, NotificationsAPI, CustomersAPI, ProfileAPI, BarcodeAPI } from "../api/client";
 import BarcodeScanner from "../components/BarcodeScanner";
+import ReceiptSlip from "../components/ReceiptSlip";
+import { buildReceipt, receiptText, whatsappUrl } from "../lib/receipt";
 import { beepSuccess, beepError } from "../lib/beep";
 import { openExternalUrl, isCapacitorNative } from "../lib/platform";
 import {
@@ -108,6 +110,10 @@ export default function Sell() {
     paymentAmount: 0,
     change: 0,
     offline: false,
+    // Captured at the moment of sale: the cart's customer is cleared right after.
+    customer: null,
+    cashierName: null,
+    createdAt: null,
   });
   const [receiptEmail, setReceiptEmail] = useState("");
   const [sendingReceipt, setSendingReceipt] = useState(false);
@@ -659,14 +665,18 @@ export default function Sell() {
       setReceiptModal({
         open: true,
         saleIds: [],
-        receiptId: offlineSale.id,
+        receiptId: String(offlineSale.id).slice(0, 8).toUpperCase(),
         total: cartTotal,
         items: offlineSale.items,
         paymentMethod: paymentMethod,
         paymentAmount: offlineSale.paymentAmount,
         change: offlineSale.change,
         offline: true,
+        customer: selectedCustomer,
+        cashierName: profileQuery.data?.name || null,
+        createdAt: offlineSale.createdAt,
       });
+      setReceiptEmail(selectedCustomer?.email || "");
 
       clearCart();
       setShowCart(false);
@@ -704,7 +714,11 @@ export default function Sell() {
         paymentAmount: paymentMethod === "cash" ? paymentAmountNum : cartTotal,
         change: change,
         offline: false,
+        customer: selectedCustomer,
+        cashierName: profileQuery.data?.name || null,
+        createdAt: sales?.[0]?.timestamp || new Date().toISOString(),
       });
+      setReceiptEmail(selectedCustomer?.email || "");
 
       clearCart();
       setShowCart(false);
@@ -736,14 +750,16 @@ export default function Sell() {
 
     setSendingReceipt(true);
     try {
-      // Send receipt for the first sale (includes all items in the email)
+      // Every line of the sale goes on the one receipt.
       const result = await NotificationsAPI.sendReceipt({
         sale_id: receiptModal.saleIds[0],
+        sale_ids: receiptModal.saleIds,
         customer_email: email,
         send_email: true,
         payment_method: receiptModal.paymentMethod,
         payment_amount: receiptModal.paymentAmount,
         change_amount: receiptModal.change,
+        customer_id: receiptModal.customer?.id || null,
       });
 
       if (result.success) {
@@ -766,24 +782,34 @@ export default function Sell() {
     }
   };
 
-  // Share the receipt as a WhatsApp message (wa.me needs no API or number —
-  // the cashier picks the customer's chat). Very common in SA retail.
+  // The slip as the customer gets it: on screen, on paper, on WhatsApp. The
+  // emailed one is built server-side from the same sale.
+  const receiptStore = profileQuery.data?.store || {
+    name: profileQuery.data?.store_name || "Your Store",
+  };
+  const receipt = useMemo(
+    () =>
+      buildReceipt({
+        store: receiptStore,
+        items: receiptModal.items,
+        total: receiptModal.total,
+        paymentMethod: receiptModal.paymentMethod,
+        paymentAmount: receiptModal.paymentAmount,
+        change: receiptModal.change,
+        number: receiptModal.receiptId,
+        customer: receiptModal.customer,
+        cashier: receiptModal.cashierName,
+        date: receiptModal.createdAt,
+        offline: receiptModal.offline,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [receiptModal, profileQuery.data]
+  );
+
+  // Share the receipt as a WhatsApp message. With the customer's number on
+  // file it opens their chat directly; otherwise the cashier picks the chat.
   const handleWhatsAppReceipt = () => {
-    const store = profileQuery.data?.store_name || "Your Store";
-    const lines = [
-      `*${store}* — receipt${receiptModal.receiptId ? ` #${receiptModal.receiptId}` : ""}`,
-      new Date().toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
-      ``,
-      ...receiptModal.items.map((i) => `${i.quantity}× ${i.name} — R ${Number(i.subtotal).toFixed(2)}`),
-      ``,
-      `*Total: R ${receiptModal.total.toFixed(2)}*`,
-      receiptModal.paymentMethod === "card"
-        ? `Paid by card`
-        : `Paid cash R ${receiptModal.paymentAmount.toFixed(2)} · change R ${receiptModal.change.toFixed(2)}`,
-      ``,
-      `Thank you for your support! 🙏`,
-    ];
-    openExternalUrl(`https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`);
+    openExternalUrl(whatsappUrl(receiptText(receipt), receiptModal.customer?.phone));
   };
 
   const closeReceiptModal = () => {
@@ -797,6 +823,9 @@ export default function Sell() {
       paymentAmount: 0,
       change: 0,
       offline: false,
+      customer: null,
+      cashierName: null,
+      createdAt: null,
     });
     setReceiptEmail("");
   };
@@ -1234,12 +1263,12 @@ export default function Sell() {
 
       {/* Receipt Modal */}
       {receiptModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="print-unclip fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="print-unclip absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={closeReceiptModal}
           />
-          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="print-unclip relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <button
               onClick={closeReceiptModal}
               className="absolute top-4 right-4 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-400"
@@ -1248,9 +1277,9 @@ export default function Sell() {
             </button>
 
             {/* Receipt Header */}
-            <div className="text-center mb-6">
-              <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Check className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+            <div className="text-center mb-5">
+              <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Check className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
               </div>
               <h3 className="text-2xl font-bold text-slate-800 dark:text-white">
                 Sale Complete!
@@ -1262,83 +1291,8 @@ export default function Sell() {
               )}
             </div>
 
-            {/* Receipt Details */}
-            <div id="receipt-print-area" className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6 space-y-3">
-              {/* Store info */}
-              <div className="text-center pb-3 border-b border-dashed border-slate-200 dark:border-slate-600">
-                <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                  {profileQuery.data?.store_name || "Your Store"}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {new Date().toLocaleString()}
-                </p>
-                {receiptModal.receiptId && (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-1">
-                    Receipt #{receiptModal.receiptId}
-                  </p>
-                )}
-              </div>
-
-              {/* Items */}
-              <div className="space-y-2 pb-3 border-b border-slate-200 dark:border-slate-600">
-                {receiptModal.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-300">
-                      {item.quantity}x {item.name}
-                    </span>
-                    <span className="font-medium text-slate-800 dark:text-white">
-                      R {item.subtotal.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 dark:text-slate-400">
-                  Payment
-                </span>
-                <span className="font-medium text-slate-800 dark:text-white flex items-center gap-1">
-                  {receiptModal.paymentMethod === "card" ? (
-                    <CreditCard size={14} />
-                  ) : (
-                    <Banknote size={14} />
-                  )}
-                  {receiptModal.paymentMethod === "card" ? "Card" : "Cash"}
-                </span>
-              </div>
-
-              <div className="border-t border-slate-200 dark:border-slate-600 pt-3">
-                <div className="flex justify-between">
-                  <span className="text-slate-600 dark:text-slate-300 font-medium">
-                    Total
-                  </span>
-                  <span className="text-2xl font-bold text-slate-800 dark:text-white">
-                    R {receiptModal.total.toFixed(2)}
-                  </span>
-                </div>
-
-                {receiptModal.paymentMethod === "cash" && (
-                  <>
-                    <div className="flex justify-between text-sm mt-2">
-                      <span className="text-slate-500 dark:text-slate-400">
-                        Tendered
-                      </span>
-                      <span className="text-slate-700 dark:text-slate-300">
-                        R {receiptModal.paymentAmount.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between mt-2">
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        Change Due
-                      </span>
-                      <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                        R {receiptModal.change.toFixed(2)}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            {/* The slip: this block is what prints. */}
+            <ReceiptSlip receipt={receipt} className="mb-6" />
 
             {/* Send Receipt Form */}
             <div className="space-y-4 border-t border-slate-200 dark:border-slate-700 pt-4">

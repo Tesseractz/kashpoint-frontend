@@ -263,8 +263,35 @@ h1, h2, h3 {
 /* Receipt printing: hide the app, print only the receipt block (works with
    regular and thermal printers via the browser's print dialog). */
 @media print {
+  @page {
+    margin: 5mm;
+  }
+  html, body {
+    background: white !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
   body * {
     visibility: hidden !important;
+  }
+  /* The slip sits inside a scrolling modal; un-clip its ancestors so a long
+     receipt isn't cut off at the modal's height. */
+  .print-unclip {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    transform: none !important;
+    backdrop-filter: none !important;
+  }
+  .receipt-slip {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    border: 0 !important;
+  }
+  .receipt-slip img {
+    max-height: 18mm !important;
+    filter: grayscale(1);
   }
   #receipt-print-area,
   #receipt-print-area *,
