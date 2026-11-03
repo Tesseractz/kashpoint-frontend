@@ -102,14 +102,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     reply(405, ['ok' => false, 'error' => 'POST only']);
 }
 
-$raw = file_get_contents('php://input', false, null, 0, 400000);
-if ($raw === false || strlen($raw) >= 400000) {
+// An ordinary form post (application/x-www-form-urlencoded), the shape this
+// host accepts; it answers 406 to requests sent as JSON.
+if (empty($_POST)) {
+    reply(400, ['ok' => false, 'error' => 'Send the message as form fields']);
+}
+if (($_SERVER['CONTENT_LENGTH'] ?? 0) > 400000) {
     reply(413, ['ok' => false, 'error' => 'Message too large']);
 }
-$in = json_decode($raw, true);
-if (!is_array($in)) {
-    reply(400, ['ok' => false, 'error' => 'Body must be JSON']);
-}
+$in = $_POST;
 
 $user = trim((string) ($in['user'] ?? ''));
 $password = (string) ($in['password'] ?? '');
