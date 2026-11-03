@@ -63,6 +63,18 @@ describe('AuthPage — password recovery', () => {
     expect(screen.queryByText(/welcome back/i)).not.toBeInTheDocument()
   })
 
+  it('opens straight on the sign-up form for an ad link ?mode=signup', async () => {
+    recoveryFlag.value = false
+    window.history.replaceState({}, '', '/auth?mode=signup')
+    supabaseMock.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: null })
+    renderAuth()
+    // Only the sign-up form has a store-name field.
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('My Shop')).toBeInTheDocument()
+    })
+    window.history.replaceState({}, '', '/auth')
+  })
+
   it('shows the normal sign-in form when it is not a recovery link', async () => {
     recoveryFlag.value = false
     renderAuth()

@@ -43,7 +43,12 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [storeName, setStoreName] = useState("")
   const [phone, setPhone] = useState("")
-  const [mode, setMode] = useState(() => (passwordRecovery ? MODE.RESET_PASSWORD : MODE.SIGN_IN))
+  // Ads link to /auth?mode=signup so a new shop lands on the sign-up form.
+  const [mode, setMode] = useState(() => {
+    if (passwordRecovery) return MODE.RESET_PASSWORD
+    const wanted = new URLSearchParams(window.location.search).get("mode")
+    return wanted === "signup" ? MODE.SIGN_UP : MODE.SIGN_IN
+  })
   const [loading, setLoading] = useState(false)
 
   // Privacy consents
