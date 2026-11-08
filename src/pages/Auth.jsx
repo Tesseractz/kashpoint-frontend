@@ -43,6 +43,13 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [storeName, setStoreName] = useState("")
   const [phone, setPhone] = useState("")
+  // The code a hardware partner (a computer shop that sets up tills) gives
+  // its customers, so their stores show up in that partner's admin view.
+  // Partners share links like /auth?mode=signup&ref=TECHZONE.
+  const [partnerCode, setPartnerCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return (params.get("ref") || params.get("partner") || "").toUpperCase()
+  })
   // Ads link to /auth?mode=signup so a new shop lands on the sign-up form.
   const [mode, setMode] = useState(() => {
     if (passwordRecovery) return MODE.RESET_PASSWORD
@@ -139,6 +146,7 @@ export default function AuthPage() {
           store_name: storeName.trim(),
           phone: normalizePhone(phone),
           marketing_opt_in: marketingOptIn,
+          partner_code: partnerCode.trim().toUpperCase() || undefined,
         },
         emailRedirectTo: `${window.location.origin}/auth`,
       },
@@ -380,6 +388,19 @@ export default function AuthPage() {
                       onChange={(e) => setPhone(e.target.value)}
                       autoComplete="tel"
                       hint={t("auth.phone_hint")}
+                    />
+                  )}
+
+                  {mode === MODE.SIGN_UP && (
+                    <Input
+                      label={t("auth.partner_code", "Partner code (optional)")}
+                      icon={KeyRound}
+                      type="text"
+                      placeholder="e.g. TECHZONE"
+                      value={partnerCode}
+                      onChange={(e) => setPartnerCode(e.target.value.toUpperCase())}
+                      autoComplete="off"
+                      hint={t("auth.partner_code_hint", "From the computer shop that set up your till, if you have one.")}
                     />
                   )}
 

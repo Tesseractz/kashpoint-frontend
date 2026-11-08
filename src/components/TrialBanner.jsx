@@ -36,6 +36,8 @@ function formatDate(iso) {
 // What to say, or null for nothing. Exported for tests.
 export function trialBannerState(plan, now = Date.now()) {
   if (!plan || plan.degraded) return null
+  // Locked by KashPoint staff. Paying does not lift it, so no Subscribe button.
+  if (plan.suspended) return { kind: 'suspended' }
   if (plan.is_on_trial) {
     if (plan.card_on_file) return null
     const end = plan.trial_end ? new Date(plan.trial_end).getTime() : NaN
@@ -78,17 +80,22 @@ export default function TrialBanner() {
     trial: 'border-emerald-200 dark:border-emerald-900 bg-emerald-50/90 dark:bg-emerald-950/40',
     ending: 'border-amber-200 dark:border-amber-900 bg-amber-50/90 dark:bg-amber-950/40',
     ended: 'border-red-200 dark:border-red-900 bg-red-50/90 dark:bg-red-950/40',
+    suspended: 'border-red-200 dark:border-red-900 bg-red-50/90 dark:bg-red-950/40',
   }[state.kind]
-  const Icon = state.kind === 'ended' ? AlertTriangle : state.kind === 'ending' ? CreditCard : Sparkles
+  const Icon = state.kind === 'ended' || state.kind === 'suspended' ? AlertTriangle : state.kind === 'ending' ? CreditCard : Sparkles
   const iconColor = {
     trial: 'text-emerald-600 dark:text-emerald-400',
     ending: 'text-amber-600 dark:text-amber-400',
     ended: 'text-red-600 dark:text-red-400',
+    suspended: 'text-red-600 dark:text-red-400',
   }[state.kind]
 
   let title
   let body
-  if (state.kind === 'ended') {
+  if (state.kind === 'suspended') {
+    title = 'This account has been suspended'
+    body = 'Your shop is limited to the free plan until KashPoint support restores it. WhatsApp 061 412 1089 or email support@kashpoint.co.za.'
+  } else if (state.kind === 'ended') {
     title = state.canceled ? 'Your Pro plan has ended' : 'Your free trial has ended'
     body = 'Your shop is on the free plan now: 10 products and 1 user. Subscribe for R150/month to unlock everything again.'
   } else {
@@ -105,9 +112,20 @@ export default function TrialBanner() {
           <p className="text-sm font-semibold text-slate-900 dark:text-white">{title}</p>
           <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 hidden sm:block">{body}</p>
         </div>
-        <Button size="sm" variant="primary" className="flex-shrink-0" onClick={() => navigate('/billing')}>
-          {state.kind === 'ended' ? 'Subscribe' : 'Add card'}
-        </Button>
+        {state.kind === 'suspended' ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="flex-shrink-0"
+            onClick={() => window.open('https://wa.me/27614121089', '_blank', 'noopener')}
+          >
+            Contact support
+          </Button>
+        ) : (
+          <Button size="sm" variant="primary" className="flex-shrink-0" onClick={() => navigate('/billing')}>
+            {state.kind === 'ended' ? 'Subscribe' : 'Add card'}
+          </Button>
+        )}
         <button
           type="button"
           onClick={dismiss}

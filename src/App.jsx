@@ -15,6 +15,7 @@ import {
   Users,
   Receipt,
   Shield,
+  ShieldCheck,
   LayoutDashboard,
   ArrowRightLeft,
 } from "lucide-react";
@@ -44,10 +45,12 @@ const navItems = [
   { to: "/privacy-settings", icon: Shield, labelKey: "nav.privacy", adminOnly: false },
 ];
 
-function NavLink({ to, icon: Icon, labelKey, onClick }) {
+// `match` marks the link active for a whole section (e.g. /admin and every
+// page under it); `fallback` is the label when the i18n key has no entry.
+function NavLink({ to, icon: Icon, labelKey, fallback, match, onClick }) {
   const location = useLocation();
   const { t } = useTranslation();
-  const isActive = location.pathname === to;
+  const isActive = match ? location.pathname.startsWith(match) : location.pathname === to;
 
   return (
     <Link
@@ -64,7 +67,7 @@ function NavLink({ to, icon: Icon, labelKey, onClick }) {
       )}
     >
       <Icon size={18} className={clsx("flex-shrink-0", isActive ? "" : "text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200")} />
-      <span>{t(labelKey)}</span>
+      <span>{fallback ? t(labelKey, fallback) : t(labelKey)}</span>
     </Link>
   );
 }
@@ -177,7 +180,7 @@ function UserDropdown() {
 
 function Sidebar({ mobile, onClose }) {
   const { t } = useTranslation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isPlatformAdmin } = useAuth();
 
   const { isSubscribedOrTrial } = usePlan();
 
@@ -225,6 +228,21 @@ function Sidebar({ mobile, onClose }) {
             onClick={mobile ? onClose : undefined}
           />
         ))}
+
+        {/* KashPoint staff and hardware partners: the portal above the stores.
+            Not subject to the plan's minimal mode; the server gates it anyway. */}
+        {isPlatformAdmin && (
+          <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+            <NavLink
+              to="/admin"
+              match="/admin"
+              icon={ShieldCheck}
+              labelKey="nav.admin_portal"
+              fallback="Admin portal"
+              onClick={mobile ? onClose : undefined}
+            />
+          </div>
+        )}
 
         {/* Only show theme toggle in sidebar on desktop */}
         {!mobile && (

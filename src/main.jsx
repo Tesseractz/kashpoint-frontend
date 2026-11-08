@@ -9,6 +9,7 @@ import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import App from './App'
 import ProtectedRoute from './components/ProtectedRoute'
+import PlatformRoute from './components/PlatformRoute'
 import RouteError from './components/RouteError'
 
 // The till and the product list load with the app: a cashier must never wait
@@ -30,6 +31,15 @@ const PrivacySettings = React.lazy(() => import('./pages/PrivacySettings'))
 const Terms = React.lazy(() => import('./pages/Terms'))
 const Privacy = React.lazy(() => import('./pages/Privacy'))
 const RefundPolicy = React.lazy(() => import('./pages/RefundPolicy'))
+
+// The admin portal: KashPoint staff and hardware partners only. Gated by
+// PlatformRoute here and by the platform_admins table on every request.
+const AdminLayout = React.lazy(() => import('./pages/admin/AdminLayout'))
+const AdminOverview = React.lazy(() => import('./pages/admin/AdminOverview'))
+const AdminStores = React.lazy(() => import('./pages/admin/AdminStores'))
+const AdminStoreDetail = React.lazy(() => import('./pages/admin/AdminStoreDetail'))
+const AdminPartners = React.lazy(() => import('./pages/admin/AdminPartners'))
+const AdminLog = React.lazy(() => import('./pages/admin/AdminLog'))
 
 function PageLoading() {
   return (
@@ -167,6 +177,21 @@ const router = createBrowserRouter([
             {page(<PrivacySettings />)}
           </ProtectedRoute>
         ),
+      },
+      {
+        path: "/admin",
+        element: (
+          <PlatformRoute>
+            {page(<AdminLayout />)}
+          </PlatformRoute>
+        ),
+        children: [
+          { index: true, element: page(<AdminOverview />) },
+          { path: "stores", element: page(<AdminStores />) },
+          { path: "stores/:storeId", element: page(<AdminStoreDetail />) },
+          { path: "partners", element: page(<AdminPartners />) },
+          { path: "log", element: page(<AdminLog />) },
+        ],
       },
       {
         path: "/terms",

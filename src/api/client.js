@@ -233,6 +233,32 @@ export const PrivacyAPI = {
   saveCookiePreferences: (data) => api.post('/privacy/cookies', data).then(r => r.data),
 };
 
+// The admin portal: KashPoint staff and hardware partners. Every route is
+// gated server-side by the platform_admins table; the client only decides
+// what to show.
+export const AdminAPI = {
+  me: () => api.get('/admin/me').then(r => r.data),
+  overview: () => api.get('/admin/overview').then(r => r.data),
+  stores: (params = {}) => api.get('/admin/stores', { params }).then(r => r.data),
+  store: (id) => api.get(`/admin/stores/${id}`).then(r => r.data),
+  extendTrial: (id, days) => api.post(`/admin/stores/${id}/trial`, { days }).then(r => r.data),
+  grantComp: (id, body) => api.post(`/admin/stores/${id}/comp`, body).then(r => r.data),
+  revokeComp: (id) => api.delete(`/admin/stores/${id}/comp`).then(r => r.data),
+  suspend: (id, reason) => api.post(`/admin/stores/${id}/suspend`, { reason }).then(r => r.data),
+  unsuspend: (id) => api.delete(`/admin/stores/${id}/suspend`).then(r => r.data),
+  updateStore: (id, patch) => api.patch(`/admin/stores/${id}`, patch).then(r => r.data),
+  passwordReset: (id) => api.post(`/admin/stores/${id}/password-reset`).then(r => r.data),
+  partners: () => api.get('/admin/partners').then(r => r.data),
+  createPartner: (body) => api.post('/admin/partners', body).then(r => r.data),
+  updatePartner: (id, patch) => api.patch(`/admin/partners/${id}`, patch).then(r => r.data),
+  addPartnerAdmin: (id, email) => api.post(`/admin/partners/${id}/admins`, { email }).then(r => r.data),
+  removePartnerAdmin: (id, userId) => api.delete(`/admin/partners/${id}/admins/${userId}`).then(r => r.data),
+  admins: () => api.get('/admin/admins').then(r => r.data),
+  addAdmin: (email) => api.post('/admin/admins', { email }).then(r => r.data),
+  removeAdmin: (userId) => api.delete(`/admin/admins/${userId}`).then(r => r.data),
+  actions: (params = {}) => api.get('/admin/actions', { params }).then(r => r.data),
+}
+
 // Legal Documents API
 export const LegalAPI = {
   getTerms: () => api.get('/legal/terms').then(r => r.data),

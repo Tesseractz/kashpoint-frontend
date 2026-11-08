@@ -143,6 +143,12 @@ export function AuthProvider({ children }) {
     profile,
     role: profile?.role || null,
     isAdmin: profile?.role === 'admin',
+    // The admin portal: 'owner' (KashPoint staff) or 'partner' (a hardware
+    // reseller who sees the stores they brought in). Server-enforced; this
+    // only decides whether the link is shown.
+    platformRole: profile?.platform_role || null,
+    isPlatformAdmin: !!profile?.platform_role,
+    isPlatformOwner: profile?.platform_role === 'owner',
     signOut,
     isAuthenticated: !!user,
     refreshProfile: fetchProfile,
