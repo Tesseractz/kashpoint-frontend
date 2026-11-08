@@ -11,6 +11,7 @@ import { PlanAPI, BillingAPI, NotificationsAPI, PushAPI } from "../api/client";
 import toast from "react-hot-toast";
 import { ensurePushSubscription, subscriptionToPayload } from "../lib/push";
 import StoreDetailsCard from "../components/StoreDetailsCard";
+import ReceiptPrinterCard from "../components/ReceiptPrinterCard";
 import {
   User,
   Mail,
@@ -338,6 +339,9 @@ export default function Profile() {
 
       {/* What goes on every receipt: owners only */}
       {isAdmin && <StoreDetailsCard />}
+
+      {/* Which printer this till uses: Windows app only, any role */}
+      <ReceiptPrinterCard />
 
       {/* Subscription Card */}
       <Card>

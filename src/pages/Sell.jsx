@@ -8,6 +8,11 @@ import { buildReceipt, receiptText, whatsappUrl } from "../lib/receipt";
 import { beepSuccess, beepError } from "../lib/beep";
 import { openExternalUrl, isCapacitorNative } from "../lib/platform";
 import {
+  hasDesktopPrinting,
+  getPrintSettings,
+  printReceipt as printReceiptOnDesktop,
+} from "../lib/desktopPrint";
+import {
   getParkedSales,
   parkSale,
   removeParkedSale,
@@ -662,7 +667,7 @@ export default function Sell() {
       setCachedProducts(updatedProducts);
       toast.success("Sale saved offline. Will sync when online.");
 
-      setReceiptModal({
+      const offlineReceipt = {
         open: true,
         saleIds: [],
         receiptId: String(offlineSale.id).slice(0, 8).toUpperCase(),
@@ -675,7 +680,9 @@ export default function Sell() {
         customer: selectedCustomer,
         cashierName: profileQuery.data?.name || null,
         createdAt: offlineSale.createdAt,
-      });
+      };
+      setReceiptModal(offlineReceipt);
+      autoPrintReceipt(offlineReceipt);
       setReceiptEmail(selectedCustomer?.email || "");
 
       clearCart();
@@ -699,7 +706,7 @@ export default function Sell() {
 
       toast.success(`Sale complete! Total: R ${cartTotal.toFixed(2)}`);
 
-      setReceiptModal({
+      const saleReceipt = {
         open: true,
         saleIds: sales.map((s) => s.id),
         receiptId: sales?.[0]?.id ? String(sales[0].id) : "",
@@ -717,7 +724,9 @@ export default function Sell() {
         customer: selectedCustomer,
         cashierName: profileQuery.data?.name || null,
         createdAt: sales?.[0]?.timestamp || new Date().toISOString(),
-      });
+      };
+      setReceiptModal(saleReceipt);
+      autoPrintReceipt(saleReceipt);
       setReceiptEmail(selectedCustomer?.email || "");
 
       clearCart();
@@ -810,6 +819,45 @@ export default function Sell() {
   // file it opens their chat directly; otherwise the cashier picks the chat.
   const handleWhatsAppReceipt = () => {
     openExternalUrl(whatsappUrl(receiptText(receipt), receiptModal.customer?.phone));
+  };
+
+  // On the Windows app with a receipt printer set up, the slip prints the
+  // moment the sale goes through: no dialog, nothing to click. Built from the
+  // same facts as the modal, because the modal's memo has not updated yet
+  // when the sale completes.
+  const autoPrintReceipt = async (sale) => {
+    if (!hasDesktopPrinting()) return;
+    const settings = await getPrintSettings();
+    if (!settings?.autoPrint || !settings.printerName) return;
+    const slip = buildReceipt({
+      store: receiptStore,
+      items: sale.items,
+      total: sale.total,
+      paymentMethod: sale.paymentMethod,
+      paymentAmount: sale.paymentAmount,
+      change: sale.change,
+      number: sale.receiptId,
+      customer: sale.customer,
+      cashier: sale.cashierName,
+      date: sale.createdAt,
+      offline: sale.offline,
+    });
+    const res = await printReceiptOnDesktop(slip, settings);
+    if (!res.ok) toast.error(`Receipt not printed: ${res.error}`);
+  };
+
+  // The Print button: straight to the till printer when one is set up on
+  // this computer, otherwise the browser's print dialog as before.
+  const handlePrintReceipt = async () => {
+    if (hasDesktopPrinting()) {
+      const res = await printReceiptOnDesktop(receipt);
+      if (res.ok) return;
+      if (res.reason !== "unconfigured") {
+        toast.error(`Receipt not printed: ${res.error}`);
+        return;
+      }
+    }
+    window.print();
   };
 
   const closeReceiptModal = () => {
@@ -1322,7 +1370,7 @@ export default function Sell() {
                 {!isCapacitorNative() && (
                   <Button
                     variant="outline"
-                    onClick={() => window.print()}
+                    onClick={handlePrintReceipt}
                     title="Print this receipt"
                   >
                     <Printer size={16} />
