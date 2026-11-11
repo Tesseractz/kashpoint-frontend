@@ -259,6 +259,16 @@ export const AdminAPI = {
   actions: (params = {}) => api.get('/admin/actions', { params }).then(r => r.data),
 }
 
+// Airtime and data through SIMcloud. Each shop sells from its own wallet.
+export const AirtimeAPI = {
+  status: () => api.get('/airtime/status').then(r => r.data),
+  activate: (body) => api.post('/airtime/activate', body, { timeout: 45000 }).then(r => r.data),
+  setFee: (service_fee) => api.put('/airtime/settings', { service_fee }).then(r => r.data),
+  products: (network) => api.get('/airtime/products', { params: { network } }).then(r => r.data),
+  sell: (body) => api.post('/airtime/sell', body, { timeout: 45000 }).then(r => r.data),
+  sales: (limit = 30) => api.get('/airtime/sales', { params: { limit } }).then(r => r.data),
+}
+
 // Legal Documents API
 export const LegalAPI = {
   getTerms: () => api.get('/legal/terms').then(r => r.data),

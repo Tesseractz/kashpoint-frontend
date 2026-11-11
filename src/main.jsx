@@ -31,6 +31,7 @@ const PrivacySettings = React.lazy(() => import('./pages/PrivacySettings'))
 const Terms = React.lazy(() => import('./pages/Terms'))
 const Privacy = React.lazy(() => import('./pages/Privacy'))
 const RefundPolicy = React.lazy(() => import('./pages/RefundPolicy'))
+const Airtime = React.lazy(() => import('./pages/Airtime'))
 
 // The admin portal: KashPoint staff and hardware partners only. Gated by
 // PlatformRoute here and by the platform_admins table on every request.
@@ -175,6 +176,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             {page(<PrivacySettings />)}
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "/airtime",
+        element: (
+          <ProtectedRoute>
+            {page(<Airtime />)}
           </ProtectedRoute>
         ),
       },
