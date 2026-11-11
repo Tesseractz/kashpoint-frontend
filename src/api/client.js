@@ -267,6 +267,8 @@ export const AirtimeAPI = {
   products: (network) => api.get('/airtime/products', { params: { network } }).then(r => r.data),
   sell: (body) => api.post('/airtime/sell', body, { timeout: 45000 }).then(r => r.data),
   sales: (limit = 30) => api.get('/airtime/sales', { params: { limit } }).then(r => r.data),
+  network: (msisdn) => api.get('/airtime/network', { params: { msisdn } }).then(r => r.data),
+  switchOff: () => api.delete('/airtime/account').then(r => r.data),
 }
 
 // Legal Documents API

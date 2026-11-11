@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { Smartphone, Wallet, RefreshCw, Send, Wifi } from 'lucide-react'
@@ -9,17 +9,32 @@ import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
 import { Input, Select } from '../components/ui/Input'
 import { Skeleton } from '../components/ui/Skeleton'
+import { Dialog } from '../components/ui/Dialog'
 
 // Sell airtime and data from the till. Each shop has its own prepaid wallet
 // at SIMcloud; airtime is sold at its face value, so what the shop earns is
 // the service fee it adds on top.
 
+// Each network as a tile in its own brand colours, so a cashier finds it by
+// sight. These are drawn marks, not the networks' logo files.
 const NETWORKS = [
-  { key: 'mtn', label: 'MTN' },
-  { key: 'vodacom', label: 'Vodacom' },
-  { key: 'cellc', label: 'Cell C' },
-  { key: 'telkom', label: 'Telkom' },
+  { key: 'mtn', label: 'MTN', tile: 'bg-[#ffcb05] text-black', mark: 'MTN' },
+  { key: 'vodacom', label: 'Vodacom', tile: 'bg-[#e60000] text-white', mark: 'V' },
+  { key: 'cellc', label: 'Cell C', tile: 'bg-black text-white', mark: 'C' },
+  { key: 'telkom', label: 'Telkom', tile: 'bg-[#0083c2] text-white', mark: 'T' },
 ]
+const networkOf = (key) => NETWORKS.find((n) => n.key === key)
+
+function NetworkMark({ network, size = 'md' }) {
+  const n = networkOf(network)
+  if (!n) return null
+  const box = size === 'sm' ? 'w-8 h-8 text-[10px]' : 'w-11 h-11 text-xs'
+  return (
+    <span className={`inline-flex items-center justify-center rounded-xl font-extrabold tracking-tight flex-shrink-0 ${box} ${n.tile}`} aria-hidden>
+      {n.mark}
+    </span>
+  )
+}
 const QUICK_AMOUNTS = [5, 10, 12, 29, 50, 100]
 const STATUS_TONE = { delivered: 'success', failed: 'danger', queued: 'warning', pending: 'warning' }
 
@@ -152,6 +167,51 @@ function FeeSetting({ fee, max }) {
   )
 }
 
+function SwitchOff({ status }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const off = useMutation({
+    mutationFn: AirtimeAPI.switchOff,
+    onSuccess: () => {
+      toast.success('Airtime switched off for this shop')
+      setOpen(false)
+      qc.invalidateQueries({ queryKey: ['airtime'] })
+    },
+    onError: (e) => toast.error(apiError(e)),
+  })
+  const hasMoney = Number(status.balance) > 0
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="text-sm text-red-600 dark:text-red-400 hover:underline">
+        Switch off airtime for this shop
+      </button>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => !o && setOpen(false)}
+        title="Switch off airtime?"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setOpen(false)}>Keep it on</Button>
+            <Button variant="danger" disabled={off.isPending} onClick={() => off.mutate()}>
+              {off.isPending ? 'Switching off…' : 'Switch off'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+          <p>This shop will stop selling airtime and the wallet for <span className="font-semibold text-slate-900 dark:text-white">{status.cell}</span> is disconnected from KashPoint. Your past airtime sales stay in your history.</p>
+          {hasMoney && (
+            <p className="rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 px-3 py-2">
+              There is still {fmtR(status.balance)} in the wallet. It stays there. Sell it first, or switch on again later with the same cell number to get it back.
+            </p>
+          )}
+          <p>The wallet itself is held by SIMcloud and is not deleted. To switch on with a different cell number afterwards, just enter the new number. To close the SIMcloud account completely, contact SIMcloud.</p>
+        </div>
+      </Dialog>
+    </>
+  )
+}
+
 function SellForm({ status }) {
   const qc = useQueryClient()
   const [kind, setKind] = useState('airtime')
@@ -159,7 +219,31 @@ function SellForm({ status }) {
   const [msisdn, setMsisdn] = useState('')
   const [amount, setAmount] = useState('')
   const [bundle, setBundle] = useState('')
+  const [detected, setDetected] = useState(null)
   const fee = Number(status.service_fee) || 0
+
+  // Once a full number is typed, ask which network it is on (ported numbers
+  // included) and select it. The cashier can still change it by hand.
+  const digits = msisdn.replace(/\D/g, '')
+  useEffect(() => {
+    setDetected(null)
+    if (digits.length < 10) return undefined
+    let cancelled = false
+    const t = setTimeout(() => {
+      AirtimeAPI.network(digits)
+        .then((res) => {
+          if (cancelled || !res?.network) return
+          setDetected(res.network)
+          setNetwork(res.network)
+          setBundle('')
+        })
+        .catch(() => {})
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [digits])
 
   const bundles = useQuery({
     queryKey: ['airtime', 'products', network],
@@ -214,13 +298,37 @@ function SellForm({ status }) {
           ))}
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Select label="Network" value={network} onChange={(e) => { setNetwork(e.target.value); setBundle('') }}>
+        <Input
+          label="Customer's cell number"
+          type="tel"
+          inputMode="tel"
+          placeholder="082 123 4567"
+          value={msisdn}
+          onChange={(e) => setMsisdn(e.target.value)}
+          hint={detected ? `This number is on ${networkOf(detected)?.label}. Selected for you.` : 'Type the number and the network is picked for you.'}
+        />
+
+        <div>
+          <p className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Network</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Network">
             {NETWORKS.map((n) => (
-              <option key={n.key} value={n.key}>{n.label}</option>
+              <button
+                key={n.key}
+                type="button"
+                role="radio"
+                aria-checked={network === n.key}
+                onClick={() => { setNetwork(n.key); setBundle('') }}
+                className={`flex items-center gap-2.5 rounded-2xl p-2.5 text-left ring-2 ring-inset transition-all ${
+                  network === n.key
+                    ? 'ring-brand-600 bg-brand-50 dark:bg-brand-950/40'
+                    : 'ring-slate-200 dark:ring-slate-700 bg-white dark:bg-slate-900 hover:ring-slate-300'
+                }`}
+              >
+                <NetworkMark network={n.key} />
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">{n.label}</span>
+              </button>
             ))}
-          </Select>
-          <Input label="Customer's cell number" type="tel" inputMode="tel" placeholder="082 123 4567" value={msisdn} onChange={(e) => setMsisdn(e.target.value)} />
+          </div>
         </div>
 
         {kind === 'airtime' ? (
@@ -329,6 +437,7 @@ export default function Airtime() {
                 <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                   {sales.data.items.map((x) => (
                     <li key={x.id ?? x.reference} className="px-5 sm:px-6 py-3 flex items-center gap-3">
+                      <NetworkMark network={x.network} size="sm" />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-900 dark:text-white">
                           {x.msisdn} · {x.description || `${x.kind} ${fmtR(x.amount)}`}
@@ -379,6 +488,7 @@ export default function Airtime() {
                 </CardContent>
               </Card>
             )}
+            {isAdmin && <SwitchOff status={s} />}
           </div>
         </div>
       )}
