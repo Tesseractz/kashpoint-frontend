@@ -39,7 +39,7 @@ const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, labelKey: "nav.dashboard", adminOnly: true },
   { to: "/transactions", icon: ArrowRightLeft, labelKey: "nav.transactions", adminOnly: true },
   { to: "/products", icon: Package, labelKey: "nav.products", adminOnly: false },
-  { to: "/airtime", icon: Smartphone, labelKey: "nav.airtime", fallback: "Airtime & data", adminOnly: false },
+  { to: "/airtime", icon: Smartphone, labelKey: "nav.airtime", fallback: "Airtime & electricity", adminOnly: false },
   { to: "/customers", icon: Users, labelKey: "nav.customers", adminOnly: true },
   { to: "/expenses", icon: Receipt, labelKey: "nav.expenses", adminOnly: true },
   { to: "/users", icon: User, labelKey: "nav.users", adminOnly: true },

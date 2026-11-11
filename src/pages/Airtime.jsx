@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Smartphone, Wallet, RefreshCw, Send, Wifi } from 'lucide-react'
+import { Smartphone, Wallet, RefreshCw, Send, Wifi, Zap, Gift } from 'lucide-react'
 import { AirtimeAPI } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card'
@@ -211,11 +211,11 @@ function Activate({ status, isAdmin }) {
   )
 }
 
-function FeeSetting({ fee, max }) {
+function FeeSetting({ fee, max, field = 'service_fee', label = 'Service fee (R)' }) {
   const qc = useQueryClient()
   const [value, setValue] = useState(String(fee ?? 0))
   const save = useMutation({
-    mutationFn: () => AirtimeAPI.setFee(Number(value) || 0),
+    mutationFn: () => AirtimeAPI.setFees({ [field]: Number(value) || 0 }),
     onSuccess: () => {
       toast.success('Service fee saved')
       qc.invalidateQueries({ queryKey: ['airtime'] })
@@ -225,16 +225,13 @@ function FeeSetting({ fee, max }) {
   return (
     <div>
       <div className="flex items-end gap-2">
-        <div className="w-32">
-          <Input label="Service fee (R)" type="number" min="0" max={max} step="0.5" value={value} onChange={(e) => setValue(e.target.value)} />
+        <div className="flex-1">
+          <Input label={label} type="number" min="0" max={max} step="0.5" value={value} onChange={(e) => setValue(e.target.value)} />
         </div>
         <Button variant="secondary" disabled={save.isPending || Number(value) === Number(fee)} onClick={() => save.mutate()} className="h-11">
           Save
         </Button>
       </div>
-      <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-        Added to every airtime or data sale. This is your profit: the airtime itself costs you its full price.
-      </p>
     </div>
   )
 }
@@ -281,6 +278,250 @@ function SwitchOff({ status }) {
         </div>
       </Dialog>
     </>
+  )
+}
+
+// What SIMcloud keeps out of an electricity purchase: 3/103 of it, capped at
+// R10, in whole rands. R150 buys R146 of electricity. (Mirrors the API.)
+const electricityFee = (amount) => Math.min(10, Math.floor((amount * 3) / 103))
+const ELECTRICITY_QUICK = [60, 100, 150, 200, 300, 500]
+
+function Summary({ rows, total }) {
+  return (
+    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-sm">
+      {rows.map(([label, value, muted]) => (
+        <div key={label} className={`flex justify-between ${muted ? 'text-slate-400 dark:text-slate-500 text-xs' : 'text-slate-600 dark:text-slate-300'}`}>
+          <span>{label}</span>
+          <span className="tabular-nums">{value}</span>
+        </div>
+      ))}
+      <div className="flex justify-between font-semibold text-slate-900 dark:text-white mt-1 pt-1 border-t border-slate-200 dark:border-slate-700">
+        <span>Customer pays</span>
+        <span className="tabular-nums">{fmtR(total)}</span>
+      </div>
+    </div>
+  )
+}
+
+function Chips({ values, value, onPick, format = (v) => `R${v}` }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {values.map((a) => (
+        <button
+          key={a}
+          type="button"
+          onClick={() => onPick(a)}
+          aria-pressed={Number(value) === a}
+          className={`px-3 py-1.5 rounded-full text-sm font-medium ring-1 ring-inset ${
+            Number(value) === a ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 ring-slate-200 dark:ring-slate-700'
+          }`}
+        >
+          {format(a)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ElectricityForm({ status }) {
+  const qc = useQueryClient()
+  const [meter, setMeter] = useState('')
+  const [amount, setAmount] = useState('')
+  const [cell, setCell] = useState('')
+  const [check, setCheck] = useState(null)
+  const fee = Number(status.electricity_fee) || 0
+  const price = Number(amount) || 0
+  const meterDigits = meter.replace(/\D/g, '')
+
+  // Check the meter as soon as it looks complete: it tells the cashier whose
+  // meter it is before any money changes hands.
+  useEffect(() => {
+    setCheck(null)
+    if (meterDigits.length < 11) return undefined
+    let cancelled = false
+    const t = setTimeout(() => {
+      AirtimeAPI.meter(meterDigits)
+        .then((res) => !cancelled && setCheck(res))
+        .catch(() => {})
+    }, 500)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [meterDigits])
+
+  const sell = useMutation({
+    mutationFn: () => AirtimeAPI.sell({ kind: 'electricity', meter_number: meterDigits, amount: price, msisdn: cell }),
+    onSuccess: (sale) => {
+      const tokens = sale?.details?.tokens || []
+      toast.success(
+        tokens.length ? `Token: ${tokens.join(' / ')}. Collect ${fmtR(price + fee)}.` : `Bought. The token will appear under Recent sales in a moment. Collect ${fmtR(price + fee)}.`,
+        { duration: 12000 },
+      )
+      setMeter('')
+      setAmount('')
+      setCell('')
+      qc.invalidateQueries({ queryKey: ['airtime'] })
+    },
+    onError: (e) => toast.error(apiError(e), { duration: 8000 }),
+  })
+
+  const lim = status.limits
+  const validAmount = Number.isInteger(price) && price >= lim.electricity_min && price <= lim.electricity_max
+  const validCell = cell.replace(/\D/g, '').length >= 10
+  const enough = status.balance == null || status.balance >= price
+  const unsupported = check?.status === 'unsupported' || check?.supported === false
+  const theirFee = electricityFee(price)
+
+  return (
+    <>
+      <Input
+        label="Meter number"
+        inputMode="numeric"
+        placeholder="11 digits, printed on the meter"
+        value={meter}
+        onChange={(e) => setMeter(e.target.value)}
+        error={unsupported ? 'This meter cannot be bought for here.' : undefined}
+        hint={
+          check?.provider
+            ? `Meter found: ${check.provider}`
+            : check?.status === 'unknown'
+              ? 'Could not check this meter right now. You can still try the sale.'
+              : 'The meter is checked before you sell.'
+        }
+      />
+      <div>
+        <Chips values={ELECTRICITY_QUICK} value={amount} onPick={(a) => setAmount(String(a))} />
+        <div className="max-w-[12rem] mt-2">
+          <Input label="Amount (R)" type="number" min={lim.electricity_min} max={lim.electricity_max} step="1" value={amount} onChange={(e) => setAmount(e.target.value)} hint={`R${lim.electricity_min} to R${lim.electricity_max}, whole rands`} />
+        </div>
+      </div>
+      <Input label="Customer's cell number (the token is also sent by SMS)" type="tel" inputMode="tel" placeholder="082 123 4567" value={cell} onChange={(e) => setCell(e.target.value)} />
+      <Summary
+        rows={[
+          ['Electricity purchase', fmtR(price)],
+          [`Electricity the customer receives (supplier keeps ${fmtR(theirFee)})`, fmtR(Math.max(0, price - theirFee)), true],
+          ['Your service fee', fmtR(fee)],
+        ]}
+        total={price + fee}
+      />
+      {!enough && <p className="text-sm text-red-600 dark:text-red-400">Your wallet has {fmtR(status.balance)}. Load money before selling this.</p>}
+      <Button size="lg" disabled={meterDigits.length < 8 || unsupported || !validAmount || !validCell || !enough || sell.isPending} onClick={() => sell.mutate()}>
+        <Zap size={16} /> {sell.isPending ? 'Buying…' : `Buy ${fmtR(price)} electricity`}
+      </Button>
+    </>
+  )
+}
+
+function VoucherForm({ status }) {
+  const qc = useQueryClient()
+  const list = useQuery({ queryKey: ['airtime', 'vouchers'], queryFn: AirtimeAPI.vouchers, staleTime: 10 * 60_000 })
+  const [productId, setProductId] = useState(null)
+  const [amount, setAmount] = useState('')
+  const fee = Number(status.service_fee) || 0
+  const items = list.data?.items || []
+  const product = items.find((p) => p.product_id === productId)
+  const price = Number(amount) || 0
+
+  const sell = useMutation({
+    mutationFn: () => AirtimeAPI.sell({ kind: 'voucher', product_id: productId, amount: price }),
+    onSuccess: () => {
+      toast.success(`Voucher bought. The code appears under Recent sales. Collect ${fmtR(price + fee)}.`, { duration: 10000 })
+      setAmount('')
+      qc.invalidateQueries({ queryKey: ['airtime'] })
+    },
+    onError: (e) => toast.error(apiError(e), { duration: 8000 }),
+  })
+  const enough = status.balance == null || status.balance >= price
+
+  if (list.isLoading) return <Skeleton className="h-40 rounded-2xl" />
+  if (list.isError) return <p className="text-sm text-red-600 dark:text-red-400">{apiError(list.error)}</p>
+
+  return (
+    <>
+      <div>
+        <p className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Shop</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" role="radiogroup" aria-label="Voucher brand">
+          {items.map((p) => (
+            <button
+              key={p.product_id}
+              type="button"
+              role="radio"
+              aria-checked={productId === p.product_id}
+              onClick={() => { setProductId(p.product_id); setAmount('') }}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-2xl p-3 h-24 ring-2 ring-inset transition-all bg-white ${
+                productId === p.product_id ? 'ring-brand-600' : 'ring-slate-200 dark:ring-slate-700 hover:ring-slate-300'
+              }`}
+            >
+              {p.logo_url ? <img src={p.logo_url} alt="" className="max-h-10 max-w-full object-contain" /> : null}
+              <span className="text-xs font-semibold text-slate-900">{p.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {product && (
+        <div>
+          <p className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">{product.name} voucher value</p>
+          <div className="max-h-40 overflow-y-auto pr-1">
+            <Chips values={product.amounts} value={amount} onPick={(a) => setAmount(String(a))} />
+          </div>
+        </div>
+      )}
+      <Summary rows={[[product ? `${product.name} voucher` : 'Voucher', fmtR(price)], ['Your service fee', fmtR(fee)]]} total={price + fee} />
+      {!enough && <p className="text-sm text-red-600 dark:text-red-400">Your wallet has {fmtR(status.balance)}. Load money before selling this.</p>}
+      <Button size="lg" disabled={!product || !price || !enough || sell.isPending} onClick={() => sell.mutate()}>
+        <Gift size={16} /> {sell.isPending ? 'Buying…' : `Buy ${fmtR(price)} voucher`}
+      </Button>
+    </>
+  )
+}
+
+// What the customer takes away from an electricity or voucher sale, with a
+// way to copy it or print it on a slip.
+function SaleCodes({ sale }) {
+  const tokens = sale.details?.tokens || []
+  const vouchers = sale.details?.vouchers || []
+  const lines = [
+    ...tokens.map((t) => ({ label: 'Token', code: t.replace(/(\d{4})(?=\d)/g, '$1 ') })),
+    ...vouchers.map((v) => ({ label: v.voucher_type || 'Code', code: String(v.voucher_code || ''), extra: v.expiry_date ? `valid until ${v.expiry_date}` : '' })),
+  ].filter((l) => l.code)
+  if (!lines.length) {
+    return ['electricity', 'voucher'].includes(sale.kind) && sale.status !== 'failed' ? (
+      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Waiting for the {sale.kind === 'electricity' ? 'token' : 'code'}…</p>
+    ) : null
+  }
+  const text = lines.map((l) => `${l.label}: ${l.code}${l.extra ? ` (${l.extra})` : ''}`).join('\n')
+  const print = () => {
+    const w = window.open('', '_blank', 'width=320,height=480')
+    if (!w) return toast.error('Allow pop-ups to print the slip.')
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+    w.document.write(
+      `<html><head><title>Slip</title><style>body{font-family:monospace;font-size:13px;width:72mm;margin:0;padding:4mm}h3{margin:0 0 6px}b{font-size:16px}</style></head><body><h3>${esc(sale.description || sale.kind)}</h3>${
+        sale.details?.meter_number ? `<div>Meter: ${esc(sale.details.meter_number)}</div>` : ''
+      }${lines.map((l) => `<div style="margin-top:8px">${esc(l.label)}:<br><b>${esc(l.code)}</b>${l.extra ? `<br>${esc(l.extra)}` : ''}</div>`).join('')}<div style="margin-top:10px">${esc(fmtTime(sale.created_at))}</div></body></html>`,
+    )
+    w.document.close()
+    w.focus()
+    w.print()
+  }
+  return (
+    <div className="mt-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
+      {lines.map((l) => (
+        <p key={l.code} className="font-mono text-sm font-semibold text-slate-900 dark:text-white break-all">
+          <span className="font-sans font-normal text-xs text-slate-500 dark:text-slate-400">{l.label}: </span>
+          {l.code}
+          {l.extra && <span className="font-sans font-normal text-xs text-slate-500 dark:text-slate-400"> · {l.extra}</span>}
+        </p>
+      ))}
+      <div className="mt-1 flex gap-3 text-xs">
+        <button type="button" className="text-brand-600 dark:text-brand-400 hover:underline" onClick={() => navigator.clipboard?.writeText(text).then(() => toast.success('Copied'), () => toast.error('Could not copy'))}>
+          Copy
+        </button>
+        <button type="button" className="text-brand-600 dark:text-brand-400 hover:underline" onClick={print}>
+          Print slip
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -348,13 +589,15 @@ function SellForm({ status }) {
     <Card>
       <CardHeader>
         <CardTitle>New sale</CardTitle>
-        <CardDescription>The airtime goes straight to the customer's phone. Take the money first.</CardDescription>
+        <CardDescription>Take the customer's money first. What you sell is paid from your wallet straight away.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex gap-2" role="group" aria-label="What to sell">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="What to sell">
           {[
             ['airtime', 'Airtime', Smartphone],
             ['data', 'Data bundle', Wifi],
+            ['electricity', 'Electricity', Zap],
+            ['voucher', 'Vouchers', Gift],
           ].map(([k, label, Icon]) => (
             <button
               key={k}
@@ -370,6 +613,9 @@ function SellForm({ status }) {
           ))}
         </div>
 
+        {kind === 'electricity' && <ElectricityForm status={status} />}
+        {kind === 'voucher' && <VoucherForm status={status} />}
+        {(kind === 'airtime' || kind === 'data') && (<>
         <Input
           label="Customer's cell number"
           type="tel"
@@ -447,6 +693,7 @@ function SellForm({ status }) {
         <Button size="lg" disabled={!validCell || !validAmount || !enough || sell.isPending} onClick={() => sell.mutate()}>
           <Send size={16} /> {sell.isPending ? 'Sending…' : `Send ${fmtR(price)}`}
         </Button>
+        </>)}
       </CardContent>
     </Card>
   )
@@ -475,8 +722,8 @@ export default function Airtime() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Airtime & data</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">MTN, Vodacom, Cell C and Telkom, sent straight to the customer's phone.</p>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Airtime, electricity & vouchers</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Airtime and data for every network, prepaid electricity and shopping vouchers, all from your own wallet.</p>
       </div>
 
       {!s.available && (
@@ -505,18 +752,20 @@ export default function Airtime() {
                       <NetworkMark network={x.network} size="sm" />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-900 dark:text-white">
-                          {x.msisdn} · {x.description || `${x.kind} ${fmtR(x.amount)}`}
+                          {x.description || `${x.kind} ${fmtR(x.amount)}`}
+                          {x.msisdn && !['electricity'].includes(x.kind) ? ` · ${x.msisdn}` : ''}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {String(x.network).toUpperCase()} · {fmtTime(x.created_at)} · fee {fmtR(x.service_fee)}
+                          {fmtTime(x.created_at)} · fee {fmtR(x.service_fee)}
                         </p>
+                        <SaleCodes sale={x} />
                       </div>
                       <Badge tone={STATUS_TONE[x.status] || 'neutral'} size="sm" dot>{x.status}</Badge>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <CardContent className="text-sm text-slate-500 dark:text-slate-400">No airtime sold yet.</CardContent>
+                <CardContent className="text-sm text-slate-500 dark:text-slate-400">Nothing sold yet.</CardContent>
               )}
             </Card>
           </div>
@@ -549,7 +798,13 @@ export default function Airtime() {
                   <CardTitle>What you earn</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <FeeSetting key={s.service_fee} fee={s.service_fee} max={s.limits.max_service_fee} />
+                  <div className="space-y-4">
+                    <FeeSetting key={`a${s.service_fee}`} field="service_fee" label="Airtime, data and vouchers (R)" fee={s.service_fee} max={s.limits.max_service_fee} />
+                    <FeeSetting key={`e${s.electricity_fee}`} field="electricity_fee" label="Electricity (R)" fee={s.electricity_fee} max={s.limits.max_service_fee} />
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Added to every sale and kept in your till. This is your profit: what you sell costs you its full price.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             )}

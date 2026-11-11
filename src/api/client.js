@@ -263,7 +263,9 @@ export const AdminAPI = {
 export const AirtimeAPI = {
   status: () => api.get('/airtime/status').then(r => r.data),
   activate: (body) => api.post('/airtime/activate', body, { timeout: 45000 }).then(r => r.data),
-  setFee: (service_fee) => api.put('/airtime/settings', { service_fee }).then(r => r.data),
+  setFees: (fees) => api.put('/airtime/settings', fees).then(r => r.data),
+  meter: (meter_number) => api.get('/airtime/electricity/meter', { params: { meter_number } }).then(r => r.data),
+  vouchers: () => api.get('/airtime/vouchers').then(r => r.data),
   products: (network) => api.get('/airtime/products', { params: { network } }).then(r => r.data),
   sell: (body) => api.post('/airtime/sell', body, { timeout: 45000 }).then(r => r.data),
   sales: (limit = 30) => api.get('/airtime/sales', { params: { limit } }).then(r => r.data),
