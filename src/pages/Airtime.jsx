@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
-import { Input, Select } from '../components/ui/Input'
+import { Input } from '../components/ui/Input'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Dialog } from '../components/ui/Dialog'
 
@@ -15,24 +15,96 @@ import { Dialog } from '../components/ui/Dialog'
 // at SIMcloud; airtime is sold at its face value, so what the shop earns is
 // the service fee it adds on top.
 
-// Each network as a tile in its own brand colours, so a cashier finds it by
-// sight. These are drawn marks, not the networks' logo files.
+// Each network shown by its logo so a cashier finds it by sight. Logo files
+// live in public/networks/<key>.svg; a network without one (or whose file
+// fails to load) falls back to a tile in its brand colour.
 const NETWORKS = [
-  { key: 'mtn', label: 'MTN', tile: 'bg-[#ffcb05] text-black', mark: 'MTN' },
-  { key: 'vodacom', label: 'Vodacom', tile: 'bg-[#e60000] text-white', mark: 'V' },
-  { key: 'cellc', label: 'Cell C', tile: 'bg-black text-white', mark: 'C' },
-  { key: 'telkom', label: 'Telkom', tile: 'bg-[#0083c2] text-white', mark: 'T' },
+  { key: 'mtn', label: 'MTN', logo: true, logoBg: 'bg-[#ffcb05]', tile: 'bg-[#ffcb05] text-black', mark: 'MTN' },
+  { key: 'vodacom', label: 'Vodacom', logo: false, logoBg: 'bg-white', tile: 'bg-[#e60000] text-white', mark: 'V' },
+  { key: 'cellc', label: 'Cell C', logo: true, logoBg: 'bg-white', tile: 'bg-black text-white', mark: 'C' },
+  { key: 'telkom', label: 'Telkom', logo: true, logoBg: 'bg-white', tile: 'bg-[#0083c2] text-white', mark: 'T' },
 ]
 const networkOf = (key) => NETWORKS.find((n) => n.key === key)
 
 function NetworkMark({ network, size = 'md' }) {
   const n = networkOf(network)
+  const [broken, setBroken] = useState(false)
   if (!n) return null
-  const box = size === 'sm' ? 'w-8 h-8 text-[10px]' : 'w-11 h-11 text-xs'
+  const box = size === 'sm' ? 'w-10 h-8 text-[10px]' : size === 'lg' ? 'w-20 h-12 text-sm' : 'w-14 h-11 text-xs'
+  if (n.logo && !broken) {
+    return (
+      <span className={`inline-flex items-center justify-center rounded-xl flex-shrink-0 p-1.5 ring-1 ring-slate-200 dark:ring-slate-700 ${box} ${n.logoBg}`}>
+        <img src={`/networks/${n.key}.svg`} alt="" className="max-w-full max-h-full object-contain" onError={() => setBroken(true)} />
+      </span>
+    )
+  }
   return (
     <span className={`inline-flex items-center justify-center rounded-xl font-extrabold tracking-tight flex-shrink-0 ${box} ${n.tile}`} aria-hidden>
       {n.mark}
     </span>
+  )
+}
+
+// "1.5GB-R99" → "1.5GB"; "1GB-R33(20day)" → "1GB (20day)". The price is shown separately.
+function bundleName(description) {
+  const text = String(description || '')
+  const m = text.match(/^(.*?)-R[\d.]+(.*)$/)
+  return m ? `${m[1]}${m[2] ? ` ${m[2].trim()}` : ''}`.trim() : text
+}
+
+function BundlePicker({ network, items, loading, value, onChange }) {
+  const [group, setGroup] = useState('')
+  const groups = [...new Set(items.map((b) => b.group).filter(Boolean))]
+  const shown = (group ? items.filter((b) => b.group === group) : items).slice().sort((a, b) => a.amount - b.amount)
+  useEffect(() => setGroup(''), [network])
+
+  if (loading) return <Skeleton className="h-40 rounded-2xl" />
+  if (!items.length) return <p className="text-sm text-slate-500 dark:text-slate-400">No bundles available for this network right now.</p>
+
+  return (
+    <div>
+      <p className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Bundle</p>
+      <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Bundle type">
+        {['', ...groups].map((g) => (
+          <button
+            key={g || 'all'}
+            type="button"
+            onClick={() => setGroup(g)}
+            aria-pressed={group === g}
+            className={`px-3 py-1 rounded-full text-xs font-medium ring-1 ring-inset ${
+              group === g ? 'bg-slate-900 text-white ring-slate-900 dark:bg-white dark:text-slate-900 dark:ring-white' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700'
+            }`}
+          >
+            {g || 'All'}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-80 overflow-y-auto pr-1" role="radiogroup" aria-label="Bundle">
+        {shown.map((b) => {
+          const id = `${b.amount}|${b.description}`
+          const on = value === id
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onChange(id)}
+              className={`rounded-2xl p-3 text-left ring-2 ring-inset transition-all ${
+                on ? 'ring-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'ring-slate-200 dark:ring-slate-700 bg-white dark:bg-slate-900 hover:ring-slate-300'
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-display text-base font-semibold text-slate-900 dark:text-white leading-tight">{bundleName(b.description)}</span>
+                <NetworkMark network={network} size="sm" />
+              </span>
+              <span className="block mt-1 text-sm font-semibold tabular-nums text-brand-700 dark:text-brand-300">{fmtR(b.amount)}</span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">{b.group}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 const QUICK_AMOUNTS = [5, 10, 12, 29, 50, 100]
@@ -352,14 +424,7 @@ function SellForm({ status }) {
             </div>
           </div>
         ) : (
-          <Select label="Bundle" value={bundle} onChange={(e) => setBundle(e.target.value)}>
-            <option value="">{bundles.isLoading ? 'Loading bundles…' : 'Choose a bundle'}</option>
-            {items.map((b) => (
-              <option key={`${b.amount}|${b.description}`} value={`${b.amount}|${b.description}`}>
-                {b.description} ({b.group})
-              </option>
-            ))}
-          </Select>
+          <BundlePicker network={network} items={items} loading={bundles.isLoading} value={bundle} onChange={setBundle} />
         )}
 
         <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-sm">
