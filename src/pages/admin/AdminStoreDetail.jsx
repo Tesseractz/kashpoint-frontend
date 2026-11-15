@@ -316,8 +316,11 @@ export default function AdminStoreDetail() {
                 <Notice tone="warning" className="mt-5">
                   <p className="font-medium">Nothing will ever charge this store.</p>
                   <p className="mt-1">
-                    It has Pro marked active with no card, no Paystack account and no end date, which only happens when the record was set by hand. To start charging, extend the trial: when it ends, the Billing page asks for a card. To keep it free on purpose, give Pro for free with an end date.
+                    It has Pro marked active with no Paystack subscription and no end date, so nothing renews it and nothing ends it. To start charging, extend the trial: when it ends, the Billing page asks for a card. To keep it free on purpose, give Pro for free with an end date.
                   </p>
+                  {sub?.paystack_customer_code && (
+                    <p className="mt-1">It does have a Paystack customer. Records made while testing are test-mode customers that never pay, but look it up in your Paystack dashboard before you act, in case real payments are going through there.</p>
+                  )}
                 </Notice>
               )}
               {isOwner && (
