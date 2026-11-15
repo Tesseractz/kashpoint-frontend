@@ -39,6 +39,8 @@ describe('admin portal formatting', () => {
     expect(subscriptionLine({ state: 'comped', comp_until: '2026-12-31T00:00:00Z' })).toMatch(/^until /)
     expect(subscriptionLine({ state: 'active', paid_through: '2026-11-28T00:00:00Z' })).toMatch(/^renews /)
     expect(subscriptionLine({ state: 'active' })).toBe('active')
+    expect(subscriptionLine({ state: 'unbilled' })).toBe('no card, no end date')
+    expect(stateTone('unbilled')).toBe('warning')
     expect(subscriptionLine({ state: 'trial_ended', trial_end: at(-3 * DAY) }, NOW)).toBe('ended 3 days ago')
     expect(subscriptionLine({ state: 'expired' })).toBe('on free limits')
     expect(subscriptionLine(null)).toBe('')

@@ -94,6 +94,7 @@ export default function AdminOverview() {
         {[
           ['Lapsed', lapsed, 'neutral'],
           ['Payment failed', states.past_due || 0, 'danger'],
+          ['Free, not billed', states.unbilled || 0, 'warning'],
           ['Complimentary', states.comped || 0, 'info'],
           ['Suspended', states.suspended || 0, 'danger'],
           ['No subscription row', states.none || 0, 'neutral'],

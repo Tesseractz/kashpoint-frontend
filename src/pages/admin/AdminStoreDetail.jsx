@@ -59,7 +59,9 @@ function TrialDialog({ open, onClose, storeId, sub }) {
       }
     >
       <p className="text-sm text-slate-600 dark:text-slate-300">
-        {ended
+        {sub?.state === 'unbilled'
+          ? 'This store has Pro with no card and no end date. A trial puts it on the normal path: Pro until the trial ends, then the Billing page asks for a card, or it drops to the free plan.'
+          : ended
           ? 'This store is not on a trial right now. The days are counted from today and the store goes back to Pro at once.'
           : `The days are added to the ${sub?.days_left ?? ''} left, so nothing the store was promised is lost.`}
       </p>
@@ -95,6 +97,7 @@ function CompDialog({ open, onClose, storeId }) {
   const act = useAdminAction((body) => AdminAPI.grantComp(storeId, body), {
     onSuccess: (res) => {
       toast.success(`Pro on the house until ${fmtDate(res.comp_until)}`)
+      if (res.note) toast(res.note, { duration: 10000, icon: '🎁' })
       onClose()
     },
   })
@@ -309,6 +312,14 @@ export default function AdminStoreDetail() {
                 <Field label="Trial used">{sub?.trial_consumed_at ? fmtDate(sub.trial_consumed_at) : 'not yet'}</Field>
                 {isOwner && <Field label="Paystack customer">{sub?.paystack_customer_code}</Field>}
               </dl>
+              {s.state === 'unbilled' && (
+                <Notice tone="warning" className="mt-5">
+                  <p className="font-medium">Nothing will ever charge this store.</p>
+                  <p className="mt-1">
+                    It has Pro marked active with no card, no Paystack account and no end date, which only happens when the record was set by hand. To start charging, extend the trial: when it ends, the Billing page asks for a card. To keep it free on purpose, give Pro for free with an end date.
+                  </p>
+                </Notice>
+              )}
               {isOwner && (
                 <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
                   {!paying && (

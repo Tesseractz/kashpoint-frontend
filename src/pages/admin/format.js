@@ -54,6 +54,7 @@ const STATE_TONES = {
   trial: 'success',
   trial_ending: 'warning',
   active: 'brand',
+  unbilled: 'warning',
   comped: 'info',
   past_due: 'danger',
   trial_ended: 'warning',
@@ -72,6 +73,7 @@ export const STATE_FILTERS = [
   { key: '', label: 'All' },
   { key: 'trial,trial_ending', label: 'On trial' },
   { key: 'active', label: 'Paying' },
+  { key: 'unbilled', label: 'Not billed' },
   { key: 'trial_ended,expired,canceled', label: 'Lapsed' },
   { key: 'past_due', label: 'Payment failed' },
   { key: 'comped', label: 'Complimentary' },
@@ -87,6 +89,8 @@ export function subscriptionLine(sub, now = Date.now()) {
       return `${sub.days_left} day${sub.days_left === 1 ? '' : 's'} left${sub.card_on_file ? ' · card saved' : ''}`
     case 'active':
       return sub.paid_through ? `renews ${fmtDate(sub.paid_through)}` : sub.card_on_file ? 'card on file' : 'active'
+    case 'unbilled':
+      return 'no card, no end date'
     case 'comped':
       return `until ${fmtDate(sub.comp_until)}`
     case 'past_due':
