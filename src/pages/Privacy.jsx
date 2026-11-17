@@ -24,7 +24,7 @@ export default function Privacy() {
             </div>
             
             <p className="text-sm text-gray-500">
-              Last updated: January 1, 2026 | Version 1.0
+              Last updated: November 17, 2026 | Version 1.1
             </p>
 
             <p>
@@ -67,6 +67,9 @@ export default function Privacy() {
             <p>We do NOT sell your personal information. We may share data with:</p>
             <ul>
               <li><strong>Service Providers:</strong> Hosting, payment processing, analytics</li>
+              <li><strong>Meta (Facebook):</strong> Only if you accept marketing cookies, the Meta Pixel tells Meta
+                that someone visited kashpoint.co.za or signed up, so we can measure which of our adverts work.
+                It never runs inside the till, and it never sends your products, sales or customers.</li>
               <li><strong>Legal Requirements:</strong> When required by law or to protect our rights</li>
               <li><strong>Business Transfers:</strong> In the event of a merger or acquisition</li>
             </ul>
@@ -109,7 +112,8 @@ export default function Privacy() {
               <li><strong>Essential:</strong> Required for the site to function (always enabled)</li>
               <li><strong>Functional:</strong> Remember your preferences</li>
               <li><strong>Analytics:</strong> Understand how users interact with our site</li>
-              <li><strong>Marketing:</strong> Personalized advertising (opt-in only)</li>
+              <li><strong>Marketing:</strong> The Meta Pixel on kashpoint.co.za and our sign-up page, to measure
+                our adverts (opt-in only: it loads only after you accept marketing cookies)</li>
             </ul>
             <p>You can manage cookie preferences through the cookie banner or browser settings.</p>
 

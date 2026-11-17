@@ -10,6 +10,7 @@ import { Input } from "../components/ui/Input"
 import toast from "react-hot-toast"
 import { Logo } from "../components/Logo"
 import { normalizePhone } from "../lib/phone"
+import { loadPixel, trackSignup, CONSENT_EVENT } from "../lib/metaPixel"
 import {
   Store,
   Mail,
@@ -77,6 +78,15 @@ export default function AuthPage() {
   useEffect(() => {
     if (passwordRecovery) setMode(MODE.RESET_PASSWORD)
   }, [passwordRecovery])
+
+  // Meta Pixel for the ads: only here, and only once the visitor accepts
+  // marketing cookies (the banner may be answered while this page is open).
+  useEffect(() => {
+    loadPixel()
+    const onConsent = () => loadPixel()
+    window.addEventListener(CONSENT_EVENT, onConsent)
+    return () => window.removeEventListener(CONSENT_EVENT, onConsent)
+  }, [])
 
   useEffect(() => {
     if (confirmedInUrl) {
@@ -152,6 +162,7 @@ export default function AuthPage() {
       },
     })
     if (error) throw error
+    if (data.user) trackSignup()
     if (data.user && !data.session) {
       setMode(MODE.EMAIL_CONFIRMATION_SENT)
     } else if (data.session) {

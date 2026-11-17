@@ -39,6 +39,9 @@ export default function CookieConsent() {
     localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify(finalPrefs))
     setPreferences(finalPrefs)
     setIsVisible(false)
+    // lib/metaPixel listens for this, so the sign-up page can start the pixel
+    // the moment someone accepts marketing cookies.
+    window.dispatchEvent(new Event('kp:consent'))
     
     // If logged in, sync to server
     if (user) {
