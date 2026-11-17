@@ -42,9 +42,19 @@ describe('metaPixel', () => {
     expect(px.loadPixel()).toBe(true) // second call does nothing new
     expect(document.querySelectorAll('script[src*="fbevents"]').length).toBe(1)
     expect(window.fbq.queue).toEqual([
+      ['set', 'autoConfig', false, '825330948916743'],
       ['init', '825330948916743'],
       ['track', 'PageView'],
     ])
+  })
+
+  it('does not follow the app past the sign-up page', async () => {
+    localStorage.setItem('cookie_consent', JSON.stringify({ essential: true, marketing: true }))
+    const px = await fresh()
+    px.loadPixel()
+    // no PageView per screen of the till, and no automatic button reports
+    expect(window.fbq.disablePushState).toBe(true)
+    expect(window.fbq.queue[0]).toEqual(['set', 'autoConfig', false, '825330948916743'])
   })
 
   it('records a completed sign-up', async () => {

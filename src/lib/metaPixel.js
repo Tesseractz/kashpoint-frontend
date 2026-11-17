@@ -40,6 +40,11 @@ export function loadPixel() {
     s.src = 'https://connect.facebook.net/en_US/fbevents.js'
     document.head.appendChild(s)
   }
+  // Keep it on the sign-up page. Left alone, Meta's script follows the app's
+  // page changes (a PageView for every screen of the till after sign-up) and
+  // reports the labels of buttons people press. Both stay off.
+  window.fbq.disablePushState = true
+  window.fbq('set', 'autoConfig', false, PIXEL_ID)
   window.fbq('init', PIXEL_ID)
   window.fbq('track', 'PageView')
   loaded = true
