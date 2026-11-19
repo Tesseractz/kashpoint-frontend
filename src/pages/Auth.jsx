@@ -37,6 +37,19 @@ const MODE = {
   PASSWORD_RESET_SENT: "reset_sent",
 }
 
+// Ad / group-post tags on the sign-up link, so each new shop records where it
+// came from. Only these three keys, trimmed and capped, or nothing at all.
+const ACQUISITION_KEYS = ["utm_source", "utm_medium", "utm_campaign"]
+function readAcquisition(search) {
+  const params = new URLSearchParams(search)
+  const out = {}
+  for (const key of ACQUISITION_KEYS) {
+    const value = (params.get(key) || "").trim().slice(0, 100)
+    if (value) out[key] = value
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 export default function AuthPage() {
   const { isAuthenticated, passwordRecovery, endPasswordRecovery } = useAuth()
   const [email, setEmail] = useState("")
@@ -51,6 +64,8 @@ export default function AuthPage() {
     const params = new URLSearchParams(window.location.search)
     return (params.get("ref") || params.get("partner") || "").toUpperCase()
   })
+  // Captured on load: the tags are kept in the sign-up metadata, not in the URL.
+  const [acquisition] = useState(() => readAcquisition(window.location.search))
   // Ads link to /auth?mode=signup so a new shop lands on the sign-up form.
   const [mode, setMode] = useState(() => {
     if (passwordRecovery) return MODE.RESET_PASSWORD
@@ -157,6 +172,7 @@ export default function AuthPage() {
           phone: normalizePhone(phone),
           marketing_opt_in: marketingOptIn,
           partner_code: partnerCode.trim().toUpperCase() || undefined,
+          acquisition,
         },
         emailRedirectTo: `${window.location.origin}/auth`,
       },
